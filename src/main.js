@@ -212,7 +212,7 @@ function startTokenRefreshLoop() {
 function createWindow() {
     mainWindow = new BrowserWindow({
         width: 1100, height: 780, minWidth: 900, minHeight: 680,
-        title: "DocSender", autoHideMenuBar: true, show: false,
+        title: "DocSender", show: false, frame: false, backgroundColor: '#0a0e1a',
         icon: path.join(__dirname, '..', 'assets', 'logo.png'),
         webPreferences: {
             preload: path.join(__dirname, 'preload.js'),
@@ -229,10 +229,23 @@ function createWindow() {
         }
     });
 
+    // Reflete no renderer o estado de maximizado (para trocar o ícone).
+    mainWindow.on('maximize', () => sendToRenderer('window-state', { maximized: true }));
+    mainWindow.on('unmaximize', () => sendToRenderer('window-state', { maximized: false }));
+
     if (!process.argv.includes('--hidden')) {
         mainWindow.once('ready-to-show', () => mainWindow.show());
     }
 }
+
+// Controles da barra de título customizada
+ipcMain.on('window-minimize', () => { if (mainWindow) mainWindow.minimize(); });
+ipcMain.on('window-maximize', () => {
+    if (!mainWindow) return;
+    if (mainWindow.isMaximized()) mainWindow.unmaximize();
+    else mainWindow.maximize();
+});
+ipcMain.on('window-close', () => { if (mainWindow) mainWindow.close(); });
 
 function createTray() {
     const iconPath = path.join(__dirname, '..', 'assets', 'logo.png');
@@ -340,8 +353,8 @@ const MAX_CONCURRENT_UPLOADS = 2;
 let uploadQueue = [];
 let activeUploads = 0;
 
-function enqueuePdf(filePath, backupFolder, autoSend) {
-    uploadQueue.push({ filePath, backupFolder, autoSend });
+function enqueuePdf(filePath, backupFolder, autoSend, errorDir) {
+    uploadQueue.push({ filePath, backupFolder, autoSend, errorDir });
     pumpQueue();
 }
 
@@ -349,9 +362,15 @@ function pumpQueue() {
     while (activeUploads < MAX_CONCURRENT_UPLOADS && uploadQueue.length > 0) {
         const job = uploadQueue.shift();
         activeUploads++;
-        processPdf(job.filePath, job.backupFolder, job.autoSend)
+        processPdf(job.filePath, job.backupFolder, job.autoSend, job.errorDir)
             .finally(() => { activeUploads--; pumpQueue(); });
     }
+}
+
+// Caminho da pasta de erro para a pasta de envio configurada.
+function getErrorDir() {
+    const folder = store.get('folderEnvio');
+    return folder ? path.join(folder, ERROR_FOLDER_NAME) : null;
 }
 
 ipcMain.handle('start-monitoring', (event, config) => {
@@ -371,9 +390,10 @@ ipcMain.handle('start-monitoring', (event, config) => {
         ignored,
         awaitWriteFinish: { stabilityThreshold: 2000 }
     });
+    const errorDir = path.join(config.folder, ERROR_FOLDER_NAME);
     watcher.on('add', (filePath) => {
         if (filePath.toLowerCase().endsWith('.pdf')) {
-            enqueuePdf(filePath, config.backupFolder, config.autoSend);
+            enqueuePdf(filePath, config.backupFolder, config.autoSend, errorDir);
         }
     });
     return true;
@@ -381,11 +401,12 @@ ipcMain.handle('start-monitoring', (event, config) => {
 
 ipcMain.handle('stop-monitoring', () => { if (watcher) { watcher.close(); watcher = null; } uploadQueue = []; return true; });
 
-// Move o arquivo para a subpasta de erro dentro da pasta monitorada.
-function moveToErrorFolder(filePath, fileName) {
+// Move o arquivo para a subpasta de erro informada (ou a padrão da pasta monitorada).
+function moveToErrorFolder(filePath, fileName, errorDir) {
     try {
-        const errorDir = path.join(path.dirname(filePath), ERROR_FOLDER_NAME);
-        moveFile(filePath, errorDir, `${Date.now()}_${fileName}`);
+        const dir = errorDir || path.join(path.dirname(filePath), ERROR_FOLDER_NAME);
+        moveFile(filePath, dir, `${Date.now()}_${fileName}`);
+        sendToRenderer('error-files-changed');
         return true;
     } catch (e) {
         sendToRenderer('log', { type: 'error', msg: `Não foi possível mover ${fileName} para a pasta de erro: ${e.message}` });
@@ -393,7 +414,7 @@ function moveToErrorFolder(filePath, fileName) {
     }
 }
 
-async function processPdf(filePath, backupFolder, autoSend) {
+async function processPdf(filePath, backupFolder, autoSend, errorDir) {
     const fileName = path.basename(filePath);
 
     // O arquivo pode ter sumido enquanto esperava na fila.
@@ -402,7 +423,7 @@ async function processPdf(filePath, backupFolder, autoSend) {
     // Validação: arquivo inválido/corrompido vai direto para a pasta de erro.
     if (!isValidPdf(filePath)) {
         sendToRenderer('log', { type: 'error', msg: `Arquivo inválido (não é PDF ou excede o limite): ${fileName}` });
-        moveToErrorFolder(filePath, fileName);
+        moveToErrorFolder(filePath, fileName, errorDir);
         return;
     }
 
@@ -429,6 +450,8 @@ async function processPdf(filePath, backupFolder, autoSend) {
         }
 
         moveFile(filePath, backupFolder, `${Date.now()}_${fileName}`);
+        // Se veio de um reprocessamento, a lista de erros pode ter diminuído.
+        sendToRenderer('error-files-changed');
     } catch (error) {
         let errorMsg = error.message;
         if (error.response && error.response.data) {
@@ -442,7 +465,7 @@ async function processPdf(filePath, backupFolder, autoSend) {
                             (error.response && error.response.status === 401);
 
         // Conforme decidido: move para a pasta de erro já na 1ª falha.
-        moveToErrorFolder(filePath, fileName);
+        moveToErrorFolder(filePath, fileName, errorDir);
 
         // Em erro de autenticação, tenta recuperar a sessão em segundo plano.
         if (isAuthError) {
@@ -452,6 +475,60 @@ async function processPdf(filePath, backupFolder, autoSend) {
         }
     }
 }
+
+
+// --- ENVIOS COM ERRO (pasta _Erros_Envio) ---
+
+ipcMain.handle('get-error-files', () => {
+    const errorDir = getErrorDir();
+    if (!errorDir || !fs.existsSync(errorDir)) return [];
+    try {
+        return fs.readdirSync(errorDir)
+            .filter(f => f.toLowerCase().endsWith('.pdf'))
+            .map(f => {
+                const st = fs.statSync(path.join(errorDir, f));
+                return { name: f, size: st.size, mtime: st.mtimeMs };
+            })
+            .sort((a, b) => b.mtime - a.mtime);
+    } catch (e) {
+        return [];
+    }
+});
+
+ipcMain.handle('reprocess-error-files', async (event, fileNames) => {
+    const errorDir = getErrorDir();
+    const backupFolder = store.get('folderBackup');
+    if (!errorDir || !fs.existsSync(errorDir)) return { success: false, error: 'Nenhuma pasta de erro encontrada.' };
+    if (!backupFolder) return { success: false, error: 'Defina a pasta de Backup em Configurações.' };
+
+    // Sem argumento = reprocessar todos.
+    const all = fs.readdirSync(errorDir).filter(f => f.toLowerCase().endsWith('.pdf'));
+    const list = (fileNames && fileNames.length) ? fileNames.filter(f => all.includes(f)) : all;
+
+    for (const name of list) {
+        const src = path.join(errorDir, name);
+        if (fs.existsSync(src)) {
+            // Reprocessa em cima do próprio arquivo; on falha volta para a mesma pasta de erro.
+            enqueuePdf(src, backupFolder, true, errorDir);
+        }
+    }
+    return { success: true, count: list.length };
+});
+
+ipcMain.handle('delete-error-file', (event, fileName) => {
+    const errorDir = getErrorDir();
+    if (!errorDir) return { success: false };
+    try {
+        const target = path.join(errorDir, fileName);
+        // Impede path traversal: o alvo precisa estar dentro da pasta de erro.
+        if (!path.resolve(target).startsWith(path.resolve(errorDir) + path.sep)) return { success: false };
+        if (fs.existsSync(target)) fs.unlinkSync(target);
+        sendToRenderer('error-files-changed');
+        return { success: true };
+    } catch (e) {
+        return { success: false, error: e.message };
+    }
+});
 
 
 // --- LÓGICA DE CERTIFICADOS ---

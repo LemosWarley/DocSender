@@ -12,6 +12,14 @@ contextBridge.exposeInMainWorld('electronAPI', {
     // --- Monitoramento ---
     startMonitoring: (config) => ipcRenderer.invoke('start-monitoring', config),
     stopMonitoring: () => ipcRenderer.invoke('stop-monitoring'),
+
+    // --- Envios com erro ---
+    getErrorFiles: () => ipcRenderer.invoke('get-error-files'),
+    reprocessErrorFiles: (fileNames) => ipcRenderer.invoke('reprocess-error-files', fileNames),
+    deleteErrorFile: (fileName) => ipcRenderer.invoke('delete-error-file', fileName),
+    onErrorFilesChanged: (callback) => {
+        ipcRenderer.on('error-files-changed', () => callback());
+    },
     
     // --- Autenticação e Sessão ---
     login: (credentials) => ipcRenderer.invoke('login', credentials),
@@ -22,6 +30,14 @@ contextBridge.exposeInMainWorld('electronAPI', {
     // --- Configurações do Sistema ---
     toggleStartup: (enable) => ipcRenderer.invoke('toggle-startup', enable),
     getSettings: () => ipcRenderer.invoke('get-settings'),
+
+    // --- Controles da janela (barra de título customizada) ---
+    windowMinimize: () => ipcRenderer.send('window-minimize'),
+    windowMaximize: () => ipcRenderer.send('window-maximize'),
+    windowClose: () => ipcRenderer.send('window-close'),
+    onWindowState: (callback) => {
+        ipcRenderer.on('window-state', (event, data) => callback(data));
+    },
     
     // --- Ouvintes de Eventos (Main -> Renderer) ---
     

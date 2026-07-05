@@ -22,7 +22,24 @@ const inputPassword = document.getElementById('inputPassword');
 const loginMessage = document.getElementById('loginMessage');
 const statusIndicator = document.getElementById('statusIndicator');
 const chkRememberMe = document.getElementById('chkRememberMe');
-const chkStartup = document.getElementById('chkStartup'); 
+const chkStartup = document.getElementById('chkStartup');
+
+// Perfil: estados de login vs conectado
+const loginCard = document.getElementById('loginCard');
+const connectedCard = document.getElementById('connectedCard');
+const connectedEmail = document.getElementById('connectedEmail');
+const btnGoMonitor = document.getElementById('btnGoMonitor');
+const btnLogout = document.getElementById('btnLogout');
+const profileTitle = document.getElementById('profileTitle');
+const profileSubtitle = document.getElementById('profileSubtitle');
+const appVersionLabel = document.getElementById('appVersionLabel');
+
+// Envios com erro
+const errorPanel = document.getElementById('errorPanel');
+const errorCount = document.getElementById('errorCount');
+const errorList = document.getElementById('errorList');
+const btnReprocessAll = document.getElementById('btnReprocessAll');
+const monitorLockNotice = document.getElementById('monitorLockNotice');
 
 const btnSelectEnvio = document.getElementById('btnSelectEnvio');
 const btnSelectBackup = document.getElementById('btnSelectBackup');
@@ -74,17 +91,81 @@ function getIconForLog(type) {
     }
 }
 
+const MAX_LOG_ITEMS = 500;
 function addLog(msg, type = 'info') {
     if (!logArea) return;
     const p = document.createElement('div');
     p.className = `log-item ${type}`;
     const time = new Date().toLocaleTimeString();
-    p.innerHTML = `${getIconForLog(type)} <span>[${time}] ${msg}</span>`;
+    // Ícone é HTML confiável; a mensagem entra como texto (evita injeção via nome de arquivo).
+    const span = document.createElement('span');
+    span.textContent = `[${time}] ${msg}`;
+    p.innerHTML = getIconForLog(type);
+    p.appendChild(span);
     logArea.appendChild(p);
-    logArea.scrollTop = logArea.scrollHeight; 
+    // Mantém apenas os últimos N registros para não consumir memória sem limite.
+    while (logArea.childElementCount > MAX_LOG_ITEMS) {
+        logArea.removeChild(logArea.firstChild);
+    }
+    logArea.scrollTop = logArea.scrollHeight;
+}
+
+// --- CONTROLES DA BARRA DE TÍTULO ---
+document.getElementById('winMinimize').addEventListener('click', () => window.electronAPI.windowMinimize());
+document.getElementById('winMaximize').addEventListener('click', () => window.electronAPI.windowMaximize());
+document.getElementById('winClose').addEventListener('click', () => window.electronAPI.windowClose());
+window.electronAPI.onWindowState((data) => {
+    const btn = document.getElementById('winMaximize');
+    if (!btn) return;
+    btn.innerHTML = data.maximized
+        ? `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="8" y="8" width="12" height="12" rx="1"></rect><path d="M4 16V5a1 1 0 0 1 1-1h11"></path></svg>`
+        : `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="4" y="4" width="16" height="16" rx="1"></rect></svg>`;
+    btn.title = data.maximized ? 'Restaurar' : 'Maximizar';
+});
+
+// --- TOASTS E CONFIRMAÇÃO (substituem alert/confirm nativos) ---
+function showToast(msg, type = 'info', duration = 3500) {
+    const container = document.getElementById('toastContainer');
+    if (!container) return;
+    const toast = document.createElement('div');
+    toast.className = `toast ${type}`;
+    toast.textContent = msg;
+    container.appendChild(toast);
+    setTimeout(() => {
+        toast.classList.add('fade-out');
+        setTimeout(() => toast.remove(), 300);
+    }, duration);
+}
+
+function showConfirm(message) {
+    return new Promise((resolve) => {
+        const overlay = document.getElementById('confirmOverlay');
+        const msgEl = document.getElementById('confirmMessage');
+        const okBtn = document.getElementById('confirmOk');
+        const cancelBtn = document.getElementById('confirmCancel');
+        msgEl.textContent = message;
+        overlay.style.display = 'flex';
+
+        const cleanup = (result) => {
+            overlay.style.display = 'none';
+            okBtn.removeEventListener('click', onOk);
+            cancelBtn.removeEventListener('click', onCancel);
+            overlay.removeEventListener('click', onBackdrop);
+            resolve(result);
+        };
+        const onOk = () => cleanup(true);
+        const onCancel = () => cleanup(false);
+        const onBackdrop = (e) => { if (e.target === overlay) cleanup(false); };
+
+        okBtn.addEventListener('click', onOk);
+        cancelBtn.addEventListener('click', onCancel);
+        overlay.addEventListener('click', onBackdrop);
+    });
 }
 
 window.addEventListener('DOMContentLoaded', async () => {
+    if (appVersionLabel) appVersionLabel.innerText = `v${appVersion}`;
+    setAuthState(false);
     try {
         const settings = await window.electronAPI.getSettings();
         folderEnvio = settings.folderEnvio; inputEnvio.value = folderEnvio;
@@ -104,12 +185,53 @@ window.addEventListener('DOMContentLoaded', async () => {
         if (folderCertificados) {
             await window.electronAPI.refreshCertificates();
         }
-        
+
+        await loadErrorFiles();
         setTimeout(checkForUpdates, 3000);
     } catch (e) { addLog("Erro ao carregar configurações.", "error"); }
 });
 
+let isConnected = false;
+
+let isMonitoring = false;
+
+// Mantém os botões Iniciar/Parar coerentes com o estado real e a conexão.
+function syncMonitorButtons() {
+    const canStart = isConnected && !isMonitoring;
+    btnStart.disabled = !canStart;
+    btnStop.disabled = !isMonitoring;
+    if (monitorLockNotice) monitorLockNotice.style.display = isConnected ? 'none' : 'flex';
+}
+
+// Centraliza o visual de "conectado" vs "desconectado" em toda a interface.
+function setAuthState(connected, email = '') {
+    isConnected = connected;
+    if (connected) {
+        loginCard.style.display = 'none';
+        connectedCard.style.display = 'block';
+        connectedEmail.innerText = email || inputEmail.value || '—';
+        profileTitle.innerText = 'Minha Conta';
+        profileSubtitle.innerText = 'Você está conectado e pronto para enviar documentos.';
+        statusIndicator.innerHTML = '<span class="status-dot dot-online"></span> Conectado';
+    } else {
+        loginCard.style.display = 'block';
+        connectedCard.style.display = 'none';
+        profileTitle.innerText = 'Autenticação';
+        profileSubtitle.innerText = 'Conecte-se para começar a enviar documentos.';
+        statusIndicator.innerHTML = '<span class="status-dot dot-offline"></span> Desconectado';
+        btnLogin.disabled = false;
+        btnLogin.innerText = 'Conectar';
+        isMonitoring = false;
+    }
+    syncMonitorButtons();
+}
+
 async function performLogin(email, password, autoStartMonitor = false) {
+    if (!email || !password) {
+        loginMessage.innerHTML = `<div style="display:flex; justify-content:center; align-items:center; gap:5px;">${getIconForLog('error')} Informe email e senha.</div>`;
+        loginMessage.style.color = "#e94560";
+        return;
+    }
     btnLogin.disabled = true; btnLogin.innerText = "Conectando...";
     const result = await window.electronAPI.login({ email, password });
     if (result.success) {
@@ -117,31 +239,126 @@ async function performLogin(email, password, autoStartMonitor = false) {
         if (chkRememberMe.checked) await window.electronAPI.saveCredentials({ email, password });
         else await window.electronAPI.clearCredentials();
 
-        loginMessage.innerHTML = `<div style="display:flex; justify-content:center; align-items:center; gap:5px;">${getIconForLog('success')} Conectado!</div>`; 
-        loginMessage.style.color = "#3fb950";
-        statusIndicator.innerHTML = '<span class="status-dot dot-online"></span> Conectado';
+        loginMessage.innerHTML = '';
+        setAuthState(true, email);
         switchSection('monitor');
         if (autoStartMonitor && folderEnvio && folderBackup) await startMonitoringProcess();
     } else {
-        loginMessage.innerHTML = `<div style="display:flex; justify-content:center; align-items:center; gap:5px;">${getIconForLog('error')} ${result.error}</div>`; 
+        loginMessage.innerHTML = `<div style="display:flex; justify-content:center; align-items:center; gap:5px;">${getIconForLog('error')} ${result.error}</div>`;
         loginMessage.style.color = "#e94560";
-        btnLogin.disabled = false; btnLogin.innerText = "Conectar";
+        setAuthState(false);
     }
 }
 
 async function startMonitoringProcess() {
-    btnStart.disabled = true; btnStop.disabled = false;
+    if (!isConnected) {
+        addLog("Conecte-se antes de iniciar o monitoramento.", "error");
+        switchSection('profile');
+        return;
+    }
+    if (!folderEnvio || !folderBackup) {
+        addLog("Defina as pastas de Envio e Backup em Configurações antes de iniciar.", "warning");
+        switchSection('configuracoes');
+        return;
+    }
     await window.electronAPI.startMonitoring({ folder: folderEnvio, backupFolder: folderBackup, autoSend: true });
+    isMonitoring = true;
+    syncMonitorButtons();
     addLog(`Monitoramento ativo em: ${folderEnvio}`, "success");
 }
 
-btnLogin.addEventListener('click', () => performLogin(inputEmail.value.trim(), inputPassword.value.trim(), false));
+// Senha NÃO recebe trim (espaços podem fazer parte da senha); email sim.
+btnLogin.addEventListener('click', () => performLogin(inputEmail.value.trim(), inputPassword.value, false));
+inputPassword.addEventListener('keydown', (e) => { if (e.key === 'Enter') performLogin(inputEmail.value.trim(), inputPassword.value, false); });
+btnGoMonitor.addEventListener('click', () => switchSection('monitor'));
+btnLogout.addEventListener('click', async () => {
+    await window.electronAPI.stopMonitoring();
+    await window.electronAPI.clearCredentials();
+    accessToken = '';
+    inputPassword.value = '';
+    chkRememberMe.checked = false;
+    isMonitoring = false;
+    setAuthState(false); // já chama syncMonitorButtons
+    addLog("Você foi desconectado.", "warning");
+});
 btnStart.addEventListener('click', startMonitoringProcess);
 btnStop.addEventListener('click', async () => {
     await window.electronAPI.stopMonitoring();
+    isMonitoring = false;
     addLog(`Monitoramento parado.`, 'warning');
-    btnStart.disabled = false; btnStop.disabled = true;
+    syncMonitorButtons();
 });
+
+// --- ENVIOS COM ERRO ---
+function formatBytes(bytes) {
+    if (!bytes) return '0 KB';
+    if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(0)} KB`;
+    return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+}
+
+async function loadErrorFiles() {
+    let files = [];
+    try { files = await window.electronAPI.getErrorFiles(); } catch (e) { files = []; }
+
+    if (!files || files.length === 0) {
+        errorPanel.style.display = 'none';
+        return;
+    }
+    errorPanel.style.display = 'block';
+    errorCount.innerText = String(files.length);
+    errorList.innerHTML = '';
+
+    files.forEach(f => {
+        const item = document.createElement('div');
+        item.className = 'error-item';
+
+        const nameEl = document.createElement('div');
+        nameEl.className = 'error-item-name';
+        nameEl.textContent = `${f.name}  ·  ${formatBytes(f.size)}`;
+
+        const actions = document.createElement('div');
+        actions.className = 'error-item-actions';
+
+        const btnRe = document.createElement('button');
+        btnRe.className = 'btn-green';
+        btnRe.textContent = 'Reprocessar';
+        btnRe.addEventListener('click', async () => {
+            btnRe.disabled = true; btnRe.textContent = '...';
+            const res = await window.electronAPI.reprocessErrorFiles([f.name]);
+            if (!res.success) showToast(res.error || 'Falha ao reprocessar.', 'error');
+            else { showToast(`Reprocessando ${f.name}...`, 'info'); switchSection('monitor'); }
+            loadErrorFiles();
+        });
+
+        const btnDel = document.createElement('button');
+        btnDel.className = 'btn-red';
+        btnDel.textContent = 'Excluir';
+        btnDel.addEventListener('click', async () => {
+            const ok = await showConfirm(`Excluir definitivamente "${f.name}" da pasta de erros?`);
+            if (!ok) return;
+            await window.electronAPI.deleteErrorFile(f.name);
+            loadErrorFiles();
+        });
+
+        actions.appendChild(btnRe);
+        actions.appendChild(btnDel);
+        item.appendChild(nameEl);
+        item.appendChild(actions);
+        errorList.appendChild(item);
+    });
+}
+
+btnReprocessAll.addEventListener('click', async () => {
+    if (!isConnected) { showToast('Conecte-se antes de reprocessar.', 'warning'); switchSection('profile'); return; }
+    btnReprocessAll.disabled = true;
+    const res = await window.electronAPI.reprocessErrorFiles();
+    btnReprocessAll.disabled = false;
+    if (!res.success) { showToast(res.error || 'Falha ao reprocessar.', 'error'); return; }
+    showToast(`Reprocessando ${res.count} arquivo(s)...`, 'info');
+    loadErrorFiles();
+});
+
+window.electronAPI.onErrorFilesChanged(() => loadErrorFiles());
 
 function switchSection(s) {
     navProfile.classList.toggle('active', s === 'profile'); 
@@ -149,10 +366,12 @@ function switchSection(s) {
     navCertificados.classList.toggle('active', s === 'certificados');
     navConfiguracoes.classList.toggle('active', s === 'configuracoes');
 
-    sectionProfile.style.display = s === 'profile' ? 'block' : 'none'; 
+    sectionProfile.style.display = s === 'profile' ? 'block' : 'none';
     sectionMonitor.style.display = s === 'monitor' ? 'flex' : 'none';
     sectionCertificados.style.display = s === 'certificados' ? 'flex' : 'none';
     sectionConfiguracoes.style.display = s === 'configuracoes' ? 'block' : 'none';
+
+    if (s === 'monitor') { syncMonitorButtons(); loadErrorFiles(); }
 }
 
 navProfile.addEventListener('click', () => switchSection('profile'));
@@ -183,12 +402,10 @@ window.electronAPI.onSessionStatus((data) => {
 
 // A sessão caiu e não foi possível recuperar automaticamente: pede reconexão manual.
 window.electronAPI.onForceReconnect(() => {
-    statusIndicator.innerHTML = '<span class="status-dot dot-offline"></span> Desconectado';
+    setAuthState(false);
     addLog("Sua sessão expirou e não foi possível reconectar automaticamente. Faça login novamente.", "error");
     loginMessage.innerHTML = `<div style="display:flex; justify-content:center; align-items:center; gap:5px;">${getIconForLog('warning')} Sessão expirada. Reconecte.</div>`;
     loginMessage.style.color = "#e94560";
-    btnLogin.disabled = false;
-    btnLogin.innerText = "Conectar";
     switchSection('profile');
 });
 
@@ -207,6 +424,12 @@ async function checkForUpdates() {
         });
         const data = await res.json();
         if (data.version && compareVersions(data.version, appVersion) > 0) {
+            const txt = document.getElementById('updateText');
+            if (txt) {
+                txt.innerText = data.release_notes
+                    ? `Nova versão ${data.version}: ${data.release_notes}`
+                    : `Nova versão ${data.version} disponível!`;
+            }
             document.getElementById('updateBanner').style.display = "flex";
             document.getElementById('btnDownloadUpdate').onclick = () => window.open(data.download_url, '_blank');
         }
@@ -240,9 +463,9 @@ btnUnlockCerts.addEventListener('click', async () => {
     
     if (result.unlockedCount > 0) {
         inputCertPassword.value = '';
-        alert(`Sucesso! ${result.unlockedCount} certificado(s) bloqueado(s) foram desbloqueado(s) com essa senha.`);
+        showToast(`${result.unlockedCount} certificado(s) desbloqueado(s) com essa senha.`, 'success');
     } else {
-        alert("A senha não serviu para nenhum certificado bloqueado.");
+        showToast("A senha não serviu para nenhum certificado bloqueado.", 'warning');
     }
 });
 
@@ -359,9 +582,11 @@ function renderCertificates() {
                 btnInstall.innerHTML = `<svg class="spinner icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="margin-right:5px; width:14px; height:14px;"><line x1="12" y1="2" x2="12" y2="6"></line><line x1="12" y1="18" x2="12" y2="22"></line><line x1="4.93" y1="4.93" x2="7.76" y2="7.76"></line><line x1="16.24" y1="16.24" x2="19.07" y2="19.07"></line><line x1="2" y1="12" x2="6" y2="12"></line><line x1="18" y1="12" x2="22" y2="12"></line><line x1="4.93" y1="19.07" x2="7.76" y2="16.24"></line><line x1="16.24" y1="7.76" x2="19.07" y2="4.93"></line></svg> Instalando...`;
                 const res = await window.electronAPI.installCertificate(cert.thumbprint);
                 if (!res.success) {
-                    alert(`Falha ao instalar: ${res.error}`);
+                    showToast(`Falha ao instalar: ${res.error}`, 'error');
                     btnInstall.disabled = false;
                     btnInstall.innerText = "Instalar";
+                } else {
+                    showToast(`Certificado instalado no Windows.`, 'success');
                 }
             });
         }
@@ -369,14 +594,17 @@ function renderCertificates() {
         const btnUninstall = card.querySelector('.btn-uninstall');
         if (btnUninstall) {
             btnUninstall.addEventListener('click', async () => {
-                if (window.confirm("Atenção: Esta ação irá desinstalar o certificado apenas do Repositório do Windows.\n\nO seu arquivo de backup (.pfx) continuará intocado na pasta.\n\nDeseja continuar?")) {
+                const ok = await showConfirm("Esta ação irá desinstalar o certificado apenas do Repositório do Windows.\n\nO seu arquivo de backup (.pfx) continuará intocado na pasta.\n\nDeseja continuar?");
+                if (ok) {
                     btnUninstall.disabled = true;
                     btnUninstall.innerHTML = `<svg class="spinner icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="margin-right:5px; width:14px; height:14px;"><line x1="12" y1="2" x2="12" y2="6"></line><line x1="12" y1="18" x2="12" y2="22"></line><line x1="4.93" y1="4.93" x2="7.76" y2="7.76"></line><line x1="16.24" y1="16.24" x2="19.07" y2="19.07"></line><line x1="2" y1="12" x2="6" y2="12"></line><line x1="18" y1="12" x2="22" y2="12"></line><line x1="4.93" y1="19.07" x2="7.76" y2="16.24"></line><line x1="16.24" y1="7.76" x2="19.07" y2="4.93"></line></svg> Desinstalando...`;
                     const res = await window.electronAPI.uninstallCertificate(cert.thumbprint);
                     if (!res.success) {
-                        alert(`Falha ao desinstalar: ${res.error}`);
+                        showToast(`Falha ao desinstalar: ${res.error}`, 'error');
                         btnUninstall.disabled = false;
                         btnUninstall.innerText = "Remover do Windows";
+                    } else {
+                        showToast(`Certificado removido do Windows.`, 'success');
                     }
                 }
             });
@@ -385,14 +613,17 @@ function renderCertificates() {
         const btnDelete = card.querySelector('.btn-delete');
         if (btnDelete) {
             btnDelete.addEventListener('click', async () => {
-                if (window.confirm("Atenção: Esta ação excluirá definitivamente o certificado desta pasta e do Repositório do Windows.\n\nDeseja continuar?")) {
+                const ok = await showConfirm("Esta ação excluirá definitivamente o certificado desta pasta e do Repositório do Windows.\n\nDeseja continuar?");
+                if (ok) {
                     btnDelete.disabled = true;
                     btnDelete.innerHTML = `<svg class="spinner icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="margin-right:5px; width:14px; height:14px;"><line x1="12" y1="2" x2="12" y2="6"></line><line x1="12" y1="18" x2="12" y2="22"></line><line x1="4.93" y1="4.93" x2="7.76" y2="7.76"></line><line x1="16.24" y1="16.24" x2="19.07" y2="19.07"></line><line x1="2" y1="12" x2="6" y2="12"></line><line x1="18" y1="12" x2="22" y2="12"></line><line x1="4.93" y1="19.07" x2="7.76" y2="16.24"></line><line x1="16.24" y1="7.76" x2="19.07" y2="4.93"></line></svg> Excluindo...`;
                     const res = await window.electronAPI.deleteCertificate(cert.thumbprint);
                     if (!res.success) {
-                        alert(`Falha ao excluir: ${res.error}`);
+                        showToast(`Falha ao excluir: ${res.error}`, 'error');
                         btnDelete.disabled = false;
                         btnDelete.innerText = "Excluir";
+                    } else {
+                        showToast(`Certificado excluído.`, 'success');
                     }
                 }
             });
