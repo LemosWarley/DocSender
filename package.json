@@ -9,9 +9,22 @@
   },
   "build": {
     "appId": "com.onechat.docsender",
+    "productName": "DocSender",
+    "copyright": "Copyright © 2026 OneChat",
     "win": {
       "icon": "assets/logo.png",
-      "target": "nsis"
+      "target": "nsis",
+      "publisherName": "OneChat",
+      "legalTrademarks": "DocSender é uma marca da OneChat",
+      "signAndEditExecutable": true
+    },
+    "nsis": {
+      "oneClick": false,
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "DocSender"
     }
   },
   "author": "OneChat",
