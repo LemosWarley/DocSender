@@ -1,0 +1,312 @@
+body {
+    margin: 0;
+    padding: 0;
+    display: flex;
+    flex-direction: column; /* Permite que o banner fique em cima */
+    height: 100vh;
+    background-color: #0a0e1a;
+    color: #e6edf3;
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+    overflow: hidden;
+}
+
+.sidebar {
+    width: 220px;
+    background-color: #0d1117;
+    padding: 20px 0;
+    border-right: 1px solid #1e2d3d;
+    display: flex;
+    flex-direction: column;
+}
+
+/* --- ALINHAMENTO DE ÍCONES E LOGO --- */
+.btn-flex {
+    display: inline-flex;
+    align-items: center;
+    justify-content: flex-start;
+}
+
+.btn-flex.btn-outline, .btn-flex.btn-green, .btn-flex.btn-red {
+    justify-content: center;
+}
+
+svg.icon {
+    width: 18px;
+    height: 18px;
+    margin-right: 8px;
+}
+
+.logo-container {
+    padding: 0 20px;
+    margin-bottom: 30px;
+    text-align: center;
+}
+
+#brandLogo {
+    max-width: 100%;
+    height: auto;
+    max-height: 50px;
+    filter: drop-shadow(0px 2px 4px rgba(0,0,0,0.5));
+}
+
+.nav-menu {
+    flex: 1;
+    padding: 0 10px;
+}
+
+.nav-btn {
+    width: 100%;
+    text-align: left;
+    background: transparent;
+    color: #8b949e;
+    border: none;
+    padding: 12px 15px;
+    margin-bottom: 5px;
+    border-radius: 8px;
+    font-size: 14px;
+    font-weight: 500;
+}
+
+.nav-btn:hover { background-color: #161b22; color: #e6edf3; }
+.nav-btn.active { background-color: #1f2937; color: #00d4ff; }
+
+.status-container {
+    padding: 20px;
+    border-top: 1px solid #1e2d3d;
+}
+
+.status { color: #8b949e; font-size: 13px; }
+
+/* --- LUZES DE STATUS (Bolinhas neon) --- */
+.status-dot {
+    display: inline-block;
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    margin-right: 8px;
+}
+.dot-offline { background-color: #8b949e; }
+.dot-online { background-color: #3fb950; box-shadow: 0 0 8px #3fb950; }
+.dot-warning { background-color: #d29922; box-shadow: 0 0 8px #d29922; }
+
+.content {
+    flex: 1;
+    padding: 30px 40px;
+    display: flex;
+    flex-direction: column;
+}
+
+.card {
+    background-color: #111827;
+    padding: 20px;
+    border-radius: 12px;
+    border: 1px solid #1e2d3d;
+    margin-bottom: 20px;
+}
+
+.login-card {
+    max-width: 400px;
+    margin: 40px auto;
+    padding: 30px;
+}
+
+label {
+    display: block;
+    font-size: 12px;
+    font-weight: bold;
+    color: #8b949e;
+    margin-bottom: 5px;
+}
+
+.input-group { display: flex; gap: 10px; }
+
+input[type="text"], input[type="email"], input[type="password"] {
+    width: 100%;
+    box-sizing: border-box;
+    background-color: #1a2332;
+    border: 1px solid #1e2d3d;
+    color: #e6edf3;
+    padding: 12px;
+    border-radius: 8px;
+    outline: none;
+}
+input[type="text"]:focus, input[type="email"]:focus, input[type="password"]:focus { 
+    border-color: #00d4ff; 
+}
+
+button {
+    padding: 12px 20px;
+    border-radius: 8px;
+    font-weight: bold;
+    cursor: pointer;
+    border: none;
+    transition: 0.2s;
+}
+
+.btn-primary { background-color: #00d4ff; color: #0a0e1a; }
+.btn-primary:hover { background-color: #00b8e6; }
+.btn-primary:disabled { background-color: #0a3d5c; color: #888; cursor: not-allowed; }
+
+.btn-outline { background-color: transparent; border: 1px solid #00d4ff; color: #00d4ff; }
+.btn-outline:hover { background-color: #0a3d5c; }
+
+.btn-green { background-color: #3fb950; color: white; }
+.btn-green:hover { background-color: #2ea043; }
+.btn-green:disabled { background-color: #1e3a24; color: #555; cursor: not-allowed; }
+
+.btn-red { background-color: transparent; border: 1px solid #e94560; color: #e94560; }
+.btn-red:hover { background-color: #1a1019; }
+.btn-red:disabled { border-color: #555; color: #555; cursor: not-allowed; }
+
+/* --- ÁREA DE LOG ATUALIZADA --- */
+.log-area {
+    background-color: #0d1117;
+    border: 1px solid #1e2d3d;
+    border-radius: 12px;
+    flex: 1; /* Ocupa o restante da tela */
+    min-height: 200px;
+    padding: 15px;
+    overflow-y: auto; /* Cria barra de rolagem se passar da altura */
+    font-family: 'Consolas', monospace;
+    font-size: 13px;
+    box-shadow: inset 0 0 10px rgba(0,0,0,0.5);
+}
+
+/* Deixa a barra de rolagem do log mais bonita e fina */
+.log-area::-webkit-scrollbar {
+    width: 8px;
+}
+.log-area::-webkit-scrollbar-track {
+    background: #0d1117;
+    border-radius: 0 12px 12px 0;
+}
+.log-area::-webkit-scrollbar-thumb {
+    background: #1e2d3d;
+    border-radius: 4px;
+}
+.log-area::-webkit-scrollbar-thumb:hover {
+    background: #8b949e;
+}
+
+.log-item {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin: 5px 0;
+}
+.log-item svg { width: 14px; height: 14px; flex-shrink: 0; }
+.info { color: #00d4ff; }
+.success { color: #3fb950; }
+.warning { color: #d29922; }
+.error { color: #e94560; }
+
+/* --- CERTIFICADOS --- */
+.cert-list {
+    flex: 1;
+    overflow-y: auto;
+    padding-right: 10px;
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+    gap: 15px;
+    align-content: start;
+}
+.cert-list::-webkit-scrollbar { width: 8px; }
+.cert-list::-webkit-scrollbar-track { background: #0d1117; border-radius: 4px; }
+.cert-list::-webkit-scrollbar-thumb { background: #1e2d3d; border-radius: 4px; }
+
+.cert-card {
+    background-color: #111827;
+    border: 1px solid #1e2d3d;
+    border-radius: 10px;
+    padding: 15px;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    transition: 0.2s border-color;
+}
+.cert-card:hover {
+    border-color: #3b4d61;
+}
+.cert-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+}
+.cert-name {
+    font-size: 14px;
+    font-weight: bold;
+    color: #e6edf3;
+    margin: 0;
+    word-break: break-all;
+}
+.cert-date {
+    font-size: 12px;
+    color: #8b949e;
+    margin: 3px 0 0 0;
+}
+.cert-status {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 11px;
+    font-weight: bold;
+    padding: 4px 8px;
+    border-radius: 12px;
+    background-color: #161b22;
+    border: 1px solid #30363d;
+}
+.cert-status svg { width: 12px; height: 12px; }
+
+.status-bloqueado { color: #8b949e; border-color: #30363d; }
+.status-instalado { color: #3fb950; border-color: #2ea043; background-color: rgba(63, 185, 80, 0.1); }
+.status-nao_instalado { color: #00d4ff; border-color: #00d4ff; background-color: rgba(0, 212, 255, 0.1); }
+.status-expirado { color: #e94560; border-color: #e94560; background-color: rgba(233, 69, 96, 0.1); }
+.status-prestes { color: #d29922; border-color: #d29922; background-color: rgba(210, 153, 34, 0.1); }
+
+.cert-actions {
+    display: flex;
+    gap: 8px;
+    margin-top: auto;
+}
+.cert-actions button {
+    flex: 1;
+    padding: 8px;
+    font-size: 12px;
+}
+
+.cert-tabs {
+    display: flex;
+    gap: 10px;
+    margin-bottom: 15px;
+    flex-wrap: wrap;
+}
+
+.tab-btn {
+    background-color: #21262d;
+    color: #8b949e;
+    border: 1px solid #30363d;
+    padding: 6px 12px;
+    border-radius: 20px;
+    font-size: 13px;
+    cursor: pointer;
+    transition: all 0.2s ease;
+}
+
+.tab-btn:hover {
+    background-color: #30363d;
+    color: #c9d1d9;
+}
+
+.tab-btn.active {
+    background-color: rgba(0, 212, 255, 0.1);
+    color: #00d4ff;
+    border-color: rgba(0, 212, 255, 0.3);
+    font-weight: 500;
+}
+
+@keyframes spin {
+    100% { transform: rotate(360deg); }
+}
+.spinner {
+    animation: spin 1.5s linear infinite;
+}

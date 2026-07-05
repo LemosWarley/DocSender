@@ -1,0 +1,203 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <title>DocSender</title>
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+
+    <div id="updateBanner" style="display: none; background-color: #3fb950; color: white; padding: 10px 20px; justify-content: space-between; align-items: center; z-index: 1000; position: relative; border-bottom: 2px solid #2ea043;">
+        <div style="display: flex; align-items: center; gap: 8px;">
+            <svg class="icon" style="margin: 0; stroke: white;" viewBox="0 0 24 24" fill="none" stroke-width="2"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"></path><path d="M13.73 21a2 2 0 0 1-3.46 0"></path></svg>
+            <span id="updateText" style="font-weight: bold; font-size: 14px;">Nova versão disponível!</span>
+        </div>
+        <button id="btnDownloadUpdate" style="background: #0a0e1a; color: white; border: 1px solid #00d4ff; padding: 6px 15px; border-radius: 6px; cursor: pointer; font-weight: bold; transition: 0.2s;">Baixar Atualização</button>
+    </div>
+
+    <div style="display: flex; height: 100vh; width: 100vw;">
+        
+        <div class="sidebar">
+            <div class="logo-container">
+                <img src="../assets/logo.svg" alt="OneChat" id="brandLogo">
+            </div>
+            
+            <div class="nav-menu">
+                <button id="navProfile" class="nav-btn active btn-flex">
+                    <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path><circle cx="12" cy="7" r="4"></circle></svg>
+                    Perfil
+                </button>
+                <button id="navMonitor" class="nav-btn btn-flex">
+                    <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"></polyline></svg>
+                    Envios
+                </button>
+                <button id="navCertificados" class="nav-btn btn-flex">
+                    <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect><path d="M7 11V7a5 5 0 0 1 10 0v4"></path></svg>
+                    Certificados
+                </button>
+                <button id="navConfiguracoes" class="nav-btn btn-flex">
+                    <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path></svg>
+                    Configurações
+                </button>
+            </div>
+
+            <div class="status-container">
+                <div class="status btn-flex" id="statusIndicator">
+                    <span class="status-dot dot-offline"></span> Desconectado
+                </div>
+            </div>
+        </div>
+        
+        <div class="content">
+            
+            <div id="sectionProfile" class="section active">
+                <h2>Autenticação</h2>
+                <p>Conecte-se para começar a enviar documentos.</p>
+                
+                <div class="card login-card">
+                    <div style="text-align: center; margin-bottom: 25px; color: #8b949e;">
+                        <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+                            <rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect>
+                            <path d="M7 11V7a5 5 0 0 1 10 0v4"></path>
+                        </svg>
+                    </div>
+
+                    <label>Email</label>
+                    <input type="email" id="inputEmail" placeholder="seu@email.com">
+                    
+                    <label style="margin-top: 15px;">Senha</label>
+                    <input type="password" id="inputPassword" placeholder="••••••••">
+
+                    <div style="margin-top: 15px; display: flex; align-items: center; gap: 8px;">
+                        <input type="checkbox" id="chkRememberMe" style="cursor: pointer; width: auto; accent-color: #00d4ff;">
+                        <label for="chkRememberMe" style="margin: 0; font-weight: normal; cursor: pointer;">Lembrar de mim</label>
+                    </div>
+
+                    <div style="margin-top: 10px; display: flex; align-items: center; gap: 8px;">
+                        <input type="checkbox" id="chkStartup" style="cursor: pointer; width: auto; accent-color: #3fb950;">
+                        <label for="chkStartup" style="margin: 0; font-weight: normal; cursor: pointer;">Iniciar minimizado com o Windows</label>
+                    </div>
+                    
+                    <button id="btnLogin" class="btn-primary" style="margin-top: 25px; width: 100%;">Conectar</button>
+                    <p id="loginMessage" style="text-align: center; font-size: 13px; margin-top: 15px;"></p>
+                </div>
+            </div>
+
+            <div id="sectionMonitor" class="section" style="display: none; height: 100%; display: flex; flex-direction: column;">
+                <h2>Monitor de Documentos</h2>
+                <p>Controle o envio automático dos PDFs.</p>
+
+                <div class="card" style="margin-bottom: 15px;">
+                    <div style="display: flex; gap: 10px;">
+                        <button id="btnStart" class="btn-green btn-flex">
+                            <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="5 3 19 12 5 21 5 3"></polygon></svg>
+                            Iniciar Monitoramento
+                        </button>
+                        <button id="btnStop" class="btn-red btn-flex" disabled>
+                            <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect></svg>
+                            Parar
+                        </button>
+                    </div>
+                </div>
+
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 15px; margin-bottom: 5px;">
+                    <h3 style="margin: 0;">Log de Atividades</h3>
+                    <button id="btnClearLog" style="background: transparent; border: none; color: #8b949e; cursor: pointer; text-decoration: underline; font-size: 12px; padding: 0;">Limpar Histórico</button>
+                </div>
+                <div class="log-area" id="logArea"></div>
+            </div>
+
+            <div id="sectionCertificados" class="section" style="display: none; height: 100%; display: flex; flex-direction: column;">
+                <h2>Certificados Digitais</h2>
+                <p>Gerenciamento e instalação no Windows.</p>
+
+                <div class="card" style="margin-bottom: 15px; padding: 15px;">
+                    <div style="display: flex; gap: 10px; align-items: flex-end;">
+                        <div style="flex: 1;">
+                            <label>Senha do(s) Certificado(s)</label>
+                            <input type="password" id="inputCertPassword" placeholder="Senha do arquivo .pfx" autocomplete="off">
+                        </div>
+                        <button id="btnUnlockCerts" class="btn-primary btn-flex">
+                            <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M2 18v3c0 .6.4 1 1 1h4v-3h3v-3h2l1.4-1.4a6.5 6.5 0 1 0-4-4Z"></path><circle cx="16.5" cy="7.5" r=".5" fill="currentColor"></circle></svg>
+                            Desbloquear
+                        </button>
+                    </div>
+                </div>
+
+                <div style="display: flex; justify-content: space-between; align-items: center; margin: 10px 0;">
+                    <h3 style="margin: 0;">Certificados Encontrados</h3>
+                </div>
+
+                <div style="margin-bottom: 15px;" id="certSearchContainer">
+                    <div class="input-group">
+                        <span style="display: flex; align-items: center; background-color: #1a2332; border: 1px solid #1e2d3d; border-right: none; padding-left: 12px; border-radius: 8px 0 0 8px; color: #8b949e;">
+                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
+                        </span>
+                        <input type="text" id="inputSearchCert" placeholder="Buscar certificado pelo nome..." autocomplete="off" style="border-radius: 0 8px 8px 0; border-left: none;">
+                    </div>
+                </div>
+
+                <div class="cert-tabs" id="certTabs" style="display: none;">
+                    <button class="tab-btn active" data-filter="todos">Todos</button>
+                    <button class="tab-btn" data-filter="validos">Válidos</button>
+                    <button class="tab-btn" data-filter="prestes">Perto de Vencer</button>
+                    <button class="tab-btn" data-filter="expirados">Expirados</button>
+                    <button class="tab-btn" data-filter="bloqueados">Bloqueados</button>
+                </div>
+                
+                <div id="certLoadingContainer" style="display: none; flex-direction: column; align-items: center; justify-content: center; margin-top: 40px; color: #8b949e;">
+                    <svg class="spinner" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width: 40px; height: 40px; stroke: #00d4ff; margin-bottom: 15px;"><line x1="12" y1="2" x2="12" y2="6"></line><line x1="12" y1="18" x2="12" y2="22"></line><line x1="4.93" y1="4.93" x2="7.76" y2="7.76"></line><line x1="16.24" y1="16.24" x2="19.07" y2="19.07"></line><line x1="2" y1="12" x2="6" y2="12"></line><line x1="18" y1="12" x2="22" y2="12"></line><line x1="4.93" y1="19.07" x2="7.76" y2="16.24"></line><line x1="16.24" y1="7.76" x2="19.07" y2="4.93"></line></svg>
+                    <p id="certLoadingText" style="font-weight: bold; color: #e6edf3; margin: 0;">Processando certificados...</p>
+                    <p id="certLoadingSub" style="font-size: 12px; margin-top: 5px;">Aguarde, isso pode levar alguns instantes.</p>
+                </div>
+
+                <div id="certificadosList" class="cert-list">
+                    <!-- Cards de certificados serão injetados aqui -->
+                    <div style="text-align: center; color: #8b949e; margin-top: 20px;">
+                        <p>Selecione uma pasta para exibir os certificados.</p>
+                    </div>
+                </div>
+            </div>
+            
+            <div id="sectionConfiguracoes" class="section" style="display: none;">
+                <h2>Configurações</h2>
+                <p>Diretórios de monitoramento do sistema.</p>
+
+                <div class="card">
+                    <label>Pasta de Envio (PDFs)</label>
+                    <div class="input-group">
+                        <input type="text" id="pastaEnvio" readonly placeholder="Nenhuma pasta selecionada">
+                        <button id="btnSelectEnvio" class="btn-outline btn-flex">
+                            <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path></svg>
+                            Selecionar
+                        </button>
+                    </div>
+
+                    <label style="margin-top: 15px;">Pasta de Backup</label>
+                    <div class="input-group">
+                        <input type="text" id="pastaBackup" readonly placeholder="Nenhuma pasta selecionada">
+                        <button id="btnSelectBackup" class="btn-outline btn-flex">
+                            <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path></svg>
+                            Selecionar
+                        </button>
+                    </div>
+                </div>
+
+                <div class="card">
+                    <label>Pasta de Certificados (.pfx)</label>
+                    <div class="input-group">
+                        <input type="text" id="pastaCertificados" readonly placeholder="Nenhuma pasta selecionada">
+                        <button id="btnSelectCertFolder" class="btn-outline btn-flex">
+                            <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path></svg>
+                            Selecionar
+                        </button>
+                    </div>
+                </div>
+            </div>
+            
+        </div>
+    </div>
+
+    <script src="renderer.js"></script>
+</body>
+</html>
