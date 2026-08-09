@@ -4,7 +4,9 @@ let folderBackup = "";
 let folderCertificados = "";
 let accessToken = ""; 
 
-const API_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im9qb3NpaGlzYmhkZXR0cXNsaWFtIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzE5NDY3NjIsImV4cCI6MjA4NzUyMjc2Mn0.Pcg65rr6Lbgtbs4UGp1xPn2Y9avI1Y1J-nTcdRewNGA";
+// Anon key do projeto proprio - manter igual a de src/main.js.
+const API_BASE_URL = "https://suwacpmwnxeazbbavwmn.supabase.co";
+const API_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InN1d2FjcG13bnhlYXpiYmF2d21uIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODYyODAzOTAsImV4cCI6MjEwMTg1NjM5MH0.OFaIVwUrsmkjj-775Xpnbyj7LS2ugP7c8dnXTzGagOQ";
 
 const navProfile = document.getElementById('navProfile');
 const navMonitor = document.getElementById('navMonitor');
@@ -419,7 +421,7 @@ function compareVersions(a, b) {
 
 async function checkForUpdates() {
     try {
-        const res = await fetch("https://ojosihisbhdettqsliam.supabase.co/functions/v1/docsender-check-update", {
+        const res = await fetch(`${API_BASE_URL}/functions/v1/docsender-check-update`, {
             headers: { 'apikey': API_KEY, 'Authorization': `Bearer ${API_KEY}` }
         });
         const data = await res.json();

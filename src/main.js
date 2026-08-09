@@ -32,8 +32,14 @@ let currentAccessToken = null;
 let currentRefreshToken = null;
 let tokenExpiresAt = 0;
 
-const API_BASE_URL = "https://ojosihisbhdettqsliam.supabase.co";
-const API_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im9qb3NpaGlzYmhkZXR0cXNsaWFtIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzE5NDY3NjIsImV4cCI6MjA4NzUyMjc2Mn0.Pcg65rr6Lbgtbs4UGp1xPn2Y9avI1Y1J-nTcdRewNGA";
+// Projeto Supabase proprio (migracao saindo do Lovable Cloud, 09/08/2026).
+// Anterior: https://ojosihisbhdettqsliam.supabase.co
+// A anon key e publica por definicao - ja viaja em toda requisicao deste app.
+// Ao trocar de projeto, o refresh_token salvo em disco deixa de valer: ele foi
+// emitido pelo projeto antigo, entao o usuario precisa entrar de novo (as
+// credenciais sao as mesmas, os usuarios vieram no dump).
+const API_BASE_URL = "https://suwacpmwnxeazbbavwmn.supabase.co";
+const API_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InN1d2FjcG13bnhlYXpiYmF2d21uIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODYyODAzOTAsImV4cCI6MjEwMTg1NjM5MH0.OFaIVwUrsmkjj-775Xpnbyj7LS2ugP7c8dnXTzGagOQ";
 
 // --- HELPERS DE COMUNICAÇÃO E ARMAZENAMENTO SEGURO ---
 
