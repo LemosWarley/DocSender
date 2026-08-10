@@ -1,6 +1,6 @@
 console.log("1. Iniciando o processo do DocSender...");
 
-const { app, BrowserWindow, ipcMain, Tray, Menu, dialog, Notification, safeStorage } = require('electron');
+const { app, BrowserWindow, ipcMain, Tray, Menu, dialog, Notification, safeStorage, powerMonitor } = require('electron');
 const path = require('path');
 const fs = require('fs');
 const chokidar = require('chokidar');
@@ -116,12 +116,74 @@ function isValidPdf(filePath) {
 
 // --- SESSÃO / TOKEN ---
 
+// Extrai o texto de erro do corpo da resposta (as Edge Functions devolvem
+// { success: false, error: "..." }).
+function responseErrorText(error) {
+    const data = error?.response?.data;
+    if (!data) return '';
+    if (typeof data === 'string') return data;
+    return String(data.error || data.message || JSON.stringify(data));
+}
+
+// Mensagens que o servidor devolve quando o JWT não vale mais. As Edge Functions
+// antigas respondiam 400 nesses casos (caíam no catch genérico); as novas
+// respondem 401. Reconhecemos as duas formas para o app continuar funcionando
+// mesmo contra um servidor ainda não atualizado.
+const AUTH_ERROR_PATTERNS = [
+    'token inválido', 'token invalido',
+    'autenticação necessária', 'autenticacao necessaria',
+    'jwt expired', 'invalid jwt', 'invalid claim', 'bad_jwt',
+    'sessão expirada', 'sessao expirada'
+];
+
+function looksLikeAuthMessage(text) {
+    const t = String(text || '').toLowerCase();
+    return AUTH_ERROR_PATTERNS.some(p => t.includes(p));
+}
+
+// Classifica uma falha em:
+//   'auth'      -> credencial inválida: renovar sessão e reenviar
+//   'transient' -> rede/5xx/429: tentar de novo mais tarde, o arquivo continua válido
+//   'permanent' -> erro de dados/cadastro: reenviar não resolve
+function classifyFailure(error) {
+    if (error.authFatal) return 'auth';
+    // Sem `response` = rede, DNS, timeout ou socket fechado. A sessão pode estar
+    // perfeitamente válida — nunca tratamos isso como sessão perdida.
+    if (error.networkDown || !error.response) return 'transient';
+
+    const status = error.response.status;
+    if (status === 401) return 'auth';
+    if (status === 429 || status >= 500) return 'transient';
+    if ((status === 400 || status === 403) && looksLikeAuthMessage(responseErrorText(error))) return 'auth';
+    return 'permanent';
+}
+
+function describeError(error) {
+    const detail = responseErrorText(error);
+    return detail ? `${error.message} - ${detail}` : error.message;
+}
+
 let refreshPromise = null; // Single-flight: evita renovações concorrentes (race de rotação)
 
+// Sem esta trava o loop de 5 min reemitiria 'force-reconnect' (e o erro no log)
+// a cada ciclo enquanto o usuário não voltasse a logar.
+let reconnectRequested = false;
+function requestReconnect() {
+    if (reconnectRequested) return;
+    reconnectRequested = true;
+    sendToRenderer('force-reconnect');
+}
+
 // Executa a renovação real com retry e backoff. Não deve ser chamada diretamente.
+// Lança erro marcado com `authFatal` (refresh token morto) ou `networkDown`
+// (servidor inalcançável) — quem chama precisa reagir de forma diferente a cada um.
 async function doRefresh() {
     const refreshToken = currentRefreshToken || getRefreshToken();
-    if (!refreshToken) throw new Error("Sessão expirada. reconecte.");
+    if (!refreshToken) {
+        const err = new Error("Sessão expirada. Reconecte.");
+        err.authFatal = true;
+        throw err;
+    }
     currentRefreshToken = refreshToken;
 
     const backoff = [2000, 5000, 10000]; // 3 tentativas
@@ -137,19 +199,26 @@ async function doRefresh() {
             currentRefreshToken = res.data.refresh_token;
             tokenExpiresAt = Math.floor(Date.now() / 1000) + res.data.expires_in;
             saveRefreshToken(currentRefreshToken);
+            reconnectRequested = false;
             return currentAccessToken;
         } catch (error) {
             lastError = error;
             const status = error.response?.status;
             // 400/401 = refresh token inválido/rotacionado -> retry não adianta, aborta já.
-            if (status === 400 || status === 401) break;
+            if (status === 400 || status === 401) {
+                const err = new Error("Sessão expirada. Reconecte.");
+                err.authFatal = true;
+                err.cause = error;
+                throw err;
+            }
             // Erros transitórios (rede/5xx): espera e tenta de novo.
             if (attempt < backoff.length - 1) await sleep(backoff[attempt]);
         }
     }
 
-    const err = new Error("Falha na renovação automática.");
-    err.isAuthError = true;
+    // Só chega aqui por rede/5xx: o refresh token provavelmente continua bom.
+    const err = new Error("Não foi possível falar com o servidor de autenticação.");
+    err.networkDown = true;
     err.cause = lastError;
     throw err;
 }
@@ -164,15 +233,30 @@ async function ensureValidToken() {
     return refreshPromise;
 }
 
+// Lê o e-mail do payload do JWT (o Supabase inclui `email`). Serve só para
+// exibir na interface ao retomar a sessão — quem valida o token é o servidor.
+function getEmailFromToken() {
+    if (!currentAccessToken) return '';
+    try {
+        const payload = currentAccessToken.split('.')[1];
+        const json = Buffer.from(payload.replace(/-/g, '+').replace(/_/g, '/'), 'base64').toString('utf8');
+        return JSON.parse(json).email || '';
+    } catch (e) {
+        return '';
+    }
+}
+
 // Tenta re-logar silenciosamente com as credenciais salvas (a senha é guardada criptografada).
 // Última linha de defesa antes de pedir reconexão manual ao usuário.
+// Retorna { ok, reason }: 'network' quando o servidor não respondeu (a senha pode
+// estar correta), 'auth' quando o servidor recusou ou não há credencial salva.
 async function attemptSilentRelogin() {
     const email = store.get('saved_email', '');
     let password = store.get('saved_password', '');
     if (password && safeStorage.isEncryptionAvailable()) {
         try { password = safeStorage.decryptString(Buffer.from(password, 'base64')); } catch (e) { password = ''; }
     }
-    if (!email || !password) return false;
+    if (!email || !password) return { ok: false, reason: 'auth' };
 
     try {
         const res = await axios.post(`${API_BASE_URL}/auth/v1/token?grant_type=password`,
@@ -183,36 +267,46 @@ async function attemptSilentRelogin() {
         currentRefreshToken = res.data.refresh_token;
         tokenExpiresAt = Math.floor(Date.now() / 1000) + res.data.expires_in;
         saveRefreshToken(currentRefreshToken);
-        return true;
+        reconnectRequested = false;
+        return { ok: true };
     } catch (e) {
-        return false;
+        return { ok: false, reason: e.response ? 'auth' : 'network' };
     }
 }
 
 // Recupera a sessão: renova o token e, se falhar, tenta re-login silencioso.
-// Só retorna false (dispara reconexão manual) quando tudo falha.
+// Retorna { ok, reason }. Só 'auth' significa sessão realmente perdida —
+// 'network' é temporário e NÃO deve deslogar o usuário.
 async function recoverSession() {
     try {
         await ensureValidToken();
-        return true;
+        return { ok: true };
     } catch (e) {
-        const ok = await attemptSilentRelogin();
-        return ok;
+        // Servidor inalcançável: não dá para afirmar que a sessão morreu.
+        if (e.networkDown) return { ok: false, reason: 'network' };
+        return await attemptSilentRelogin();
+    }
+}
+
+// Revalida a sessão e avisa o renderer. Chamada pelo loop periódico e ao
+// acordar da suspensão.
+async function checkSession() {
+    if (!getRefreshToken() && !store.get('saved_password')) return;
+    const rec = await recoverSession();
+    if (rec.ok) {
+        sendToRenderer('session-status', { connected: true });
+    } else if (rec.reason === 'network') {
+        // Rede fora não é sessão perdida: segue conectado e tenta no próximo ciclo.
+        sendToRenderer('session-status', { connected: true, offline: true });
+    } else {
+        requestReconnect();
     }
 }
 
 let tokenRefreshInterval = null;
 function startTokenRefreshLoop() {
     if (tokenRefreshInterval) clearInterval(tokenRefreshInterval);
-    tokenRefreshInterval = setInterval(async () => {
-        if (!getRefreshToken() && !store.get('saved_password')) return;
-        const ok = await recoverSession();
-        if (ok) {
-            sendToRenderer('session-status', { connected: true });
-        } else {
-            sendToRenderer('force-reconnect');
-        }
-    }, 5 * 60 * 1000); // Checa a cada 5 minutos
+    tokenRefreshInterval = setInterval(checkSession, 5 * 60 * 1000); // Checa a cada 5 minutos
 }
 
 function createWindow() {
@@ -281,6 +375,11 @@ app.whenReady().then(() => {
     if (savedCertFolder && fs.existsSync(savedCertFolder)) {
         startCertMonitoring(savedCertFolder);
     }
+
+    // Ao voltar da suspensão o intervalo de 5 min está atrasado e o access token
+    // provavelmente venceu. Revalida na hora e destrava a fila, em vez de deixar
+    // o primeiro envio pós-hibernação falhar.
+    powerMonitor.on('resume', () => { checkSession(); pumpQueue(); });
 });
 
 app.on('second-instance', () => {
@@ -300,6 +399,7 @@ ipcMain.handle('login', async (event, { email, password }) => {
         currentRefreshToken = res.data.refresh_token;
         tokenExpiresAt = Math.floor(Date.now() / 1000) + res.data.expires_in;
         saveRefreshToken(currentRefreshToken);
+        reconnectRequested = false;
         return { success: true, token: currentAccessToken };
     } catch (error) {
         return { success: false, error: error.response?.data?.error_description || "Erro de login" };
@@ -323,11 +423,29 @@ ipcMain.handle('get-saved-credentials', () => {
     return { email, password };
 });
 
+// Logout explícito: derruba tudo, inclusive a sessão em memória.
 ipcMain.handle('clear-credentials', () => {
     store.delete('saved_email'); store.delete('saved_password');
     store.delete('saved_refresh_token'); store.delete('refresh_token_encrypted');
     currentAccessToken = null; currentRefreshToken = null; tokenExpiresAt = 0;
     return true;
+});
+
+// "Lembrar de mim" desmarcado: esquece apenas a senha guardada. O refresh token
+// É a sessão — apagá-lo aqui derrubava o login que acabara de ser feito, e todo
+// envio seguinte falhava por falta de token.
+ipcMain.handle('forget-saved-password', () => {
+    store.delete('saved_email'); store.delete('saved_password');
+    return true;
+});
+
+// Retoma a sessão a partir do refresh token em disco, sem pedir a senha.
+// Usada na abertura do app quando não há credencial salva.
+ipcMain.handle('restore-session', async () => {
+    if (!getRefreshToken() && !store.get('saved_password')) return { success: false, reason: 'auth' };
+    const rec = await recoverSession();
+    if (!rec.ok) return { success: false, reason: rec.reason };
+    return { success: true, email: getEmailFromToken() || store.get('saved_email', '') };
 });
 
 ipcMain.handle('toggle-startup', (e, enable) => {
@@ -354,23 +472,72 @@ ipcMain.handle('select-folder', async () => {
     return result.canceled ? null : result.filePaths[0];
 });
 
-// --- FILA DE ENVIO COM CONCORRÊNCIA LIMITADA ---
+// --- FILA DE ENVIO COM CONCORRÊNCIA LIMITADA E RETRY COM BACKOFF ---
 const MAX_CONCURRENT_UPLOADS = 2;
+
+// Falha transitória (rede caiu, 5xx, timeout) não manda o arquivo para a pasta
+// de erro na hora: reagenda. Só desiste depois de esgotar estas tentativas.
+const RETRY_BACKOFF_MS = [30 * 1000, 2 * 60 * 1000, 10 * 60 * 1000];
+
 let uploadQueue = [];
 let activeUploads = 0;
+let queueTimer = null;
+const inFlight = new Set(); // Caminhos sendo enviados neste momento
+
+function formatDelay(ms) {
+    return ms < 60000 ? `${Math.round(ms / 1000)}s` : `${Math.round(ms / 60000)} min`;
+}
 
 function enqueuePdf(filePath, backupFolder, autoSend, errorDir) {
-    uploadQueue.push({ filePath, backupFolder, autoSend, errorDir });
+    // O chokidar pode reemitir o mesmo caminho; não duplica na fila nem
+    // concorre com um envio já em andamento do mesmo arquivo.
+    if (inFlight.has(filePath) || uploadQueue.some(j => j.filePath === filePath)) return;
+    uploadQueue.push({ filePath, backupFolder, autoSend, errorDir, attempt: 0, nextAttemptAt: Date.now() });
     pumpQueue();
 }
 
+function clearQueue() {
+    uploadQueue = [];
+    if (queueTimer) { clearTimeout(queueTimer); queueTimer = null; }
+}
+
 function pumpQueue() {
-    while (activeUploads < MAX_CONCURRENT_UPLOADS && uploadQueue.length > 0) {
-        const job = uploadQueue.shift();
+    if (queueTimer) { clearTimeout(queueTimer); queueTimer = null; }
+
+    // Só puxa jobs cujo horário de tentativa já chegou.
+    while (activeUploads < MAX_CONCURRENT_UPLOADS) {
+        const idx = uploadQueue.findIndex(j => j.nextAttemptAt <= Date.now());
+        if (idx === -1) break;
+        const [job] = uploadQueue.splice(idx, 1);
         activeUploads++;
-        processPdf(job.filePath, job.backupFolder, job.autoSend, job.errorDir)
-            .finally(() => { activeUploads--; pumpQueue(); });
+        inFlight.add(job.filePath);
+        processPdf(job).finally(() => {
+            activeUploads--;
+            inFlight.delete(job.filePath);
+            pumpQueue();
+        });
     }
+
+    // Reagenda o próximo despertar para o job pendente mais próximo.
+    if (uploadQueue.length > 0) {
+        const soonest = Math.min(...uploadQueue.map(j => j.nextAttemptAt));
+        queueTimer = setTimeout(pumpQueue, Math.max(1000, soonest - Date.now()));
+    }
+}
+
+// Reagenda o job após falha transitória, ou desiste se já esgotou o orçamento.
+function scheduleRetry(job, fileName, detail) {
+    const delay = RETRY_BACKOFF_MS[job.attempt];
+    if (delay === undefined) {
+        sendToRenderer('log', { type: 'error', msg: `Erro em ${fileName} após ${RETRY_BACKOFF_MS.length + 1} tentativas: ${detail}` });
+        moveToErrorFolder(job.filePath, fileName, job.errorDir);
+        return;
+    }
+    job.attempt++;
+    job.nextAttemptAt = Date.now() + delay;
+    // Idem: quem religa a fila é o `finally` do job atual.
+    uploadQueue.push(job);
+    sendToRenderer('log', { type: 'warning', msg: `Falha temporária em ${fileName} (${detail}). Nova tentativa em ${formatDelay(delay)}.` });
 }
 
 // Caminho da pasta de erro para a pasta de envio configurada.
@@ -381,7 +548,7 @@ function getErrorDir() {
 
 ipcMain.handle('start-monitoring', (event, config) => {
     if (watcher) watcher.close();
-    uploadQueue = [];
+    clearQueue();
     // Ignora a pasta de erro (dentro da monitorada) e a de backup, para não
     // reprocessar em loop arquivos que nós mesmos movemos.
     const backupFolder = config.backupFolder ? path.resolve(config.backupFolder) : null;
@@ -405,7 +572,9 @@ ipcMain.handle('start-monitoring', (event, config) => {
     return true;
 });
 
-ipcMain.handle('stop-monitoring', () => { if (watcher) { watcher.close(); watcher = null; } uploadQueue = []; return true; });
+// Os arquivos só saem da pasta monitorada quando o envio dá certo, então o que
+// estava na fila é reencontrado pela varredura inicial ao religar o monitoramento.
+ipcMain.handle('stop-monitoring', () => { if (watcher) { watcher.close(); watcher = null; } clearQueue(); return true; });
 
 // Move o arquivo para a subpasta de erro informada (ou a padrão da pasta monitorada).
 function moveToErrorFolder(filePath, fileName, errorDir) {
@@ -420,7 +589,8 @@ function moveToErrorFolder(filePath, fileName, errorDir) {
     }
 }
 
-async function processPdf(filePath, backupFolder, autoSend, errorDir) {
+async function processPdf(job) {
+    const { filePath, backupFolder, autoSend, errorDir } = job;
     const fileName = path.basename(filePath);
 
     // O arquivo pode ter sumido enquanto esperava na fila.
@@ -434,23 +604,27 @@ async function processPdf(filePath, backupFolder, autoSend, errorDir) {
     }
 
     try {
-        const validToken = await ensureValidToken();
-        sendToRenderer('log', { type: 'info', msg: `Detectado: ${fileName}` });
+        if (job.attempt === 0 && !job.authRetried) {
+            sendToRenderer('log', { type: 'info', msg: `Detectado: ${fileName}` });
+        }
 
-        // Chave de idempotência (SHA-256) — defesa contra envio duplicado.
+        // Chave de idempotência (SHA-256 do conteúdo) — o servidor devolve o envio
+        // já existente em vez de criar outro, então repetir a tentativa é seguro.
         const idempotencyKey = crypto.createHash('sha256').update(fs.readFileSync(filePath)).digest('hex');
 
         const form = new FormData();
         form.append('file', fs.createReadStream(filePath), fileName);
 
         const uploadRes = await axios.post(`${API_BASE_URL}/functions/v1/documentos-upload`, form, {
-            headers: { ...form.getHeaders(), 'Authorization': `Bearer ${validToken}`, 'apikey': API_KEY, 'x-idempotency-key': idempotencyKey },
+            headers: { ...form.getHeaders(), 'Authorization': `Bearer ${await ensureValidToken()}`, 'apikey': API_KEY, 'x-idempotency-key': idempotencyKey },
             maxContentLength: Infinity, maxBodyLength: Infinity, timeout: 120000
         });
 
         if (uploadRes.data.empresa_encontrada && autoSend) {
+            // Token pedido de novo: o upload inclui análise de IA e pode demorar
+            // o bastante para o token capturado antes dele já não servir.
             await axios.post(`${API_BASE_URL}/functions/v1/documentos-processar`, { envio_id: uploadRes.data.envio_id }, {
-                headers: { 'Authorization': `Bearer ${validToken}`, 'apikey': API_KEY, 'Content-Type': 'application/json' }, timeout: 60000
+                headers: { 'Authorization': `Bearer ${await ensureValidToken()}`, 'apikey': API_KEY, 'Content-Type': 'application/json' }, timeout: 60000
             });
             sendToRenderer('log', { type: 'success', msg: `Enviado: ${fileName}` });
         }
@@ -459,27 +633,56 @@ async function processPdf(filePath, backupFolder, autoSend, errorDir) {
         // Se veio de um reprocessamento, a lista de erros pode ter diminuído.
         sendToRenderer('error-files-changed');
     } catch (error) {
-        let errorMsg = error.message;
-        if (error.response && error.response.data) {
-            errorMsg += ` - Detalhes: ${typeof error.response.data === 'object' ? JSON.stringify(error.response.data) : error.response.data}`;
-        }
-        sendToRenderer('log', { type: 'error', msg: `Erro em ${fileName}: ${errorMsg}` });
-
-        const isAuthError = error.isAuthError ||
-                            error.message.includes("Sessão expirada") ||
-                            error.message.includes("Falha na renovação") ||
-                            (error.response && error.response.status === 401);
-
-        // Conforme decidido: move para a pasta de erro já na 1ª falha.
-        moveToErrorFolder(filePath, fileName, errorDir);
-
-        // Em erro de autenticação, tenta recuperar a sessão em segundo plano.
-        if (isAuthError) {
-            recoverSession().then((ok) => {
-                sendToRenderer(ok ? 'session-status' : 'force-reconnect', ok ? { connected: true } : undefined);
-            });
-        }
+        await handleSendFailure(job, error, fileName);
     }
+}
+
+// Decide o destino de um envio que falhou: reenviar agora (sessão renovada),
+// reagendar (falha temporária) ou mandar para a pasta de erro (falha definitiva).
+async function handleSendFailure(job, error, fileName) {
+    const kind = classifyFailure(error);
+    const detail = describeError(error);
+
+    if (kind === 'transient') {
+        return scheduleRetry(job, fileName, detail);
+    }
+
+    if (kind === 'auth') {
+        // Uma renovação por documento: descarta o token em memória, recupera a
+        // sessão e reenvia na hora. É isto que evita o "erro de autenticação"
+        // que só saía deslogando e logando de novo.
+        if (!job.authRetried) {
+            job.authRetried = true;
+            currentAccessToken = null;
+            tokenExpiresAt = 0;
+
+            const rec = await recoverSession();
+            if (rec.ok) {
+                sendToRenderer('session-status', { connected: true });
+                sendToRenderer('log', { type: 'warning', msg: `Sessão renovada. Reenviando ${fileName}...` });
+                job.nextAttemptAt = Date.now();
+                // Sem pumpQueue() aqui: ainda estamos dentro do catch deste job,
+                // e o `finally` que zera activeUploads/inFlight só roda depois.
+                // É ele quem religa a fila, já com a contabilidade correta.
+                uploadQueue.push(job);
+                return;
+            }
+            // Servidor inalcançável: a sessão pode estar viva, trata como temporário.
+            if (rec.reason === 'network') {
+                return scheduleRetry(job, fileName, 'servidor de autenticação inacessível');
+            }
+        }
+
+        // Sessão perdida de verdade: aí sim pede reconexão manual.
+        sendToRenderer('log', { type: 'error', msg: `Erro em ${fileName}: sessão expirada e não foi possível reconectar.` });
+        moveToErrorFolder(job.filePath, fileName, job.errorDir);
+        requestReconnect();
+        return;
+    }
+
+    // Erro definitivo (cadastro, dados do documento): repetir não resolve.
+    sendToRenderer('log', { type: 'error', msg: `Erro em ${fileName}: ${detail}` });
+    moveToErrorFolder(job.filePath, fileName, job.errorDir);
 }
 
 

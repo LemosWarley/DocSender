@@ -25,7 +25,12 @@ contextBridge.exposeInMainWorld('electronAPI', {
     login: (credentials) => ipcRenderer.invoke('login', credentials),
     getSavedCredentials: () => ipcRenderer.invoke('get-saved-credentials'),
     saveCredentials: (creds) => ipcRenderer.invoke('save-credentials', creds),
+    // Logout: derruba a sessão inteira.
     clearCredentials: () => ipcRenderer.invoke('clear-credentials'),
+    // "Lembrar de mim" desmarcado: esquece a senha, preserva a sessão ativa.
+    forgetSavedPassword: () => ipcRenderer.invoke('forget-saved-password'),
+    // Retoma a sessão pelo refresh token guardado, sem pedir senha.
+    restoreSession: () => ipcRenderer.invoke('restore-session'),
     
     // --- Configurações do Sistema ---
     toggleStartup: (enable) => ipcRenderer.invoke('toggle-startup', enable),

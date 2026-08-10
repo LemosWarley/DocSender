@@ -1,4 +1,4 @@
-const appVersion = "1.1.2"; 
+const appVersion = "1.2.0";
 let folderEnvio = "";
 let folderBackup = "";
 let folderCertificados = "";
@@ -181,9 +181,20 @@ window.addEventListener('DOMContentLoaded', async () => {
             inputPassword.value = creds.password;
             chkRememberMe.checked = true;
             addLog("Autenticando automaticamente...", "info");
-            await performLogin(creds.email, creds.password, true); 
+            await performLogin(creds.email, creds.password, true);
+        } else {
+            // Sem senha salva ainda dá para retomar a sessão pelo refresh token
+            // guardado — ele sobrevive ao "Lembrar de mim" desmarcado.
+            const restored = await window.electronAPI.restoreSession();
+            if (restored.success) {
+                if (restored.email) inputEmail.value = restored.email;
+                setAuthState(true, restored.email);
+                addLog("Sessão retomada.", "success");
+                switchSection('monitor');
+                if (folderEnvio && folderBackup) await startMonitoringProcess();
+            }
         }
-        
+
         if (folderCertificados) {
             await window.electronAPI.refreshCertificates();
         }
@@ -196,6 +207,10 @@ window.addEventListener('DOMContentLoaded', async () => {
 let isConnected = false;
 
 let isMonitoring = false;
+
+// Marca que o monitoramento foi interrompido por queda de sessão, para religar
+// sozinho assim que o usuário reconectar.
+let resumeMonitoringAfterLogin = false;
 
 // Mantém os botões Iniciar/Parar coerentes com o estado real e a conexão.
 function syncMonitorButtons() {
@@ -238,13 +253,17 @@ async function performLogin(email, password, autoStartMonitor = false) {
     const result = await window.electronAPI.login({ email, password });
     if (result.success) {
         accessToken = result.token;
+        // Só esquece a senha: apagar a sessão aqui derrubava o login recém-feito.
         if (chkRememberMe.checked) await window.electronAPI.saveCredentials({ email, password });
-        else await window.electronAPI.clearCredentials();
+        else await window.electronAPI.forgetSavedPassword();
 
         loginMessage.innerHTML = '';
         setAuthState(true, email);
         switchSection('monitor');
-        if (autoStartMonitor && folderEnvio && folderBackup) await startMonitoringProcess();
+        // Religa o monitoramento que foi parado por uma queda de sessão.
+        const resume = resumeMonitoringAfterLogin;
+        resumeMonitoringAfterLogin = false;
+        if ((autoStartMonitor || resume) && folderEnvio && folderBackup) await startMonitoringProcess();
     } else {
         loginMessage.innerHTML = `<div style="display:flex; justify-content:center; align-items:center; gap:5px;">${getIconForLog('error')} ${result.error}</div>`;
         loginMessage.style.color = "#e94560";
@@ -397,13 +416,23 @@ window.electronAPI.onLogEvent((data) => addLog(data.msg, data.type));
 
 // Sessão recuperada silenciosamente pelo processo principal (refresh ou re-login).
 window.electronAPI.onSessionStatus((data) => {
-    if (data && data.connected) {
+    if (!data) return;
+    if (data.offline) {
+        // Servidor inacessível: a sessão continua válida, só a rede está fora.
+        statusIndicator.innerHTML = '<span class="status-dot dot-warning"></span> Sem conexão';
+    } else if (data.connected) {
         statusIndicator.innerHTML = '<span class="status-dot dot-online"></span> Conectado';
     }
 });
 
 // A sessão caiu e não foi possível recuperar automaticamente: pede reconexão manual.
-window.electronAPI.onForceReconnect(() => {
+window.electronAPI.onForceReconnect(async () => {
+    // Sem parar o watcher, o processo principal continuaria detectando PDFs e
+    // jogando todos na pasta de erro com a tela de login aberta.
+    if (isMonitoring) {
+        await window.electronAPI.stopMonitoring();
+        resumeMonitoringAfterLogin = true;
+    }
     setAuthState(false);
     addLog("Sua sessão expirou e não foi possível reconectar automaticamente. Faça login novamente.", "error");
     loginMessage.innerHTML = `<div style="display:flex; justify-content:center; align-items:center; gap:5px;">${getIconForLog('warning')} Sessão expirada. Reconecte.</div>`;
