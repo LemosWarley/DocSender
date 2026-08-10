@@ -1,6 +1,6 @@
 {
   "name": "docsender",
-  "version": "1.2.0",
+  "version": "1.1.4",
   "description": "Envio Automático de Documentos PDF",
   "main": "src/main.js",
   "scripts": {

@@ -1,4 +1,4 @@
-const appVersion = "1.2.0";
+const appVersion = "1.1.4";
 let folderEnvio = "";
 let folderBackup = "";
 let folderCertificados = "";
