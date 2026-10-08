@@ -33,7 +33,7 @@ análise (o status `empresa_nao_encontrada` não entra na idempotência do servi
 
 ## 2026-10-08 — Falha da IA no upload responde 503
 
-**Status:** Vigente (alterado no `onechattotal`, publicação pendente)
+**Status:** Vigente. Publicado em 2026-10-08 (`onechattotal` `c15b584`, function versão 134).
 **Contexto:** com a IA fora do ar, o `documentos-upload` gravava status `erro` e
 respondia 200 sem CNPJ; o app tratava como "cliente não cadastrado".
 **Decisão:** 503 `{ codigo: 'IA_INDISPONIVEL' }`, apagando a linha e o arquivo da

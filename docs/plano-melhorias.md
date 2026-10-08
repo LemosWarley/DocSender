@@ -13,7 +13,7 @@ Functions que ele chama no `onechattotal` (`documentos-upload`, `documentos-proc
 
 | Versão | Conteúdo | Situação |
 |---|---|---|
-| 1.2.0 | Fase 0 + Fase 1 + Fase 2 + correções pequenas de certificado | **implementada em 2026-10-08**, instalador gerado, não publicada |
+| 1.2.0 | Fase 0 + Fase 1 + Fase 2 + correções pequenas de certificado | na `main` (2026-10-08), testada com login real; instalador a publicar no Super Admin |
 | 1.3.0 | Fase 4 (visibilidade) | a fazer |
 | 1.4.0 | Fase 5 (certificados) | a fazer |
 | — | Fase 3 (atualização automática) | adiada |
@@ -60,8 +60,8 @@ app instalado ignora as duas.
 
 ### No servidor (`onechattotal`)
 - [x] `documentos-upload`: falha da IA responde **503** `IA_INDISPONIVEL`, apaga a linha
-      e o arquivo da tentativa e registra em `system_logs`. **Alterado localmente, não
-      publicado.** Compatível com a 1.1.4 (que trata 503 como falha temporária).
+      e o arquivo da tentativa e registra em `system_logs`. **Publicado em 2026-10-08
+      (versão 134).** Compatível com a 1.1.4 (que trata 503 como falha temporária).
 - [x] O app aceita `codigo` estável no corpo de erro (`AUTH_EXPIRADA`); o servidor ainda
       não manda os demais códigos.
 
