@@ -285,6 +285,11 @@ button {
     border-color: #e94560 !important;
     background: rgba(233, 69, 96, 0.04);
 }
+.pending-panel {
+    border-color: #d29922 !important;
+    background: rgba(210, 153, 34, 0.05);
+}
+.pending-panel .error-panel-header h3 { color: #d29922; }
 .error-panel-header {
     display: flex;
     justify-content: space-between;

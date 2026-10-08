@@ -2,6 +2,8 @@
 <html lang="pt-BR">
 <head>
     <meta charset="UTF-8">
+    <!-- Só roda script e carrega recurso do próprio app; a tela não fala com a rede (quem fala é o processo principal). -->
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'none'; object-src 'none'; base-uri 'none'; form-action 'none'">
     <title>DocSender</title>
     <link rel="stylesheet" href="styles.css">
 </head>
@@ -152,6 +154,20 @@
                     <div id="errorList" class="error-list"></div>
                 </div>
 
+                <div class="card error-panel pending-panel" id="pendingPanel" style="display: none;">
+                    <div class="error-panel-header">
+                        <h3>
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"></circle><polyline points="12 6 12 12 16 14"></polyline></svg>
+                            Pendentes (<span id="pendingCount">0</span>)
+                        </h3>
+                        <div style="display: flex; gap: 8px;">
+                            <button id="btnReprocessPending" class="btn-green" style="padding: 6px 12px; font-size: 13px;">Reprocessar todos</button>
+                        </div>
+                    </div>
+                    <p style="font-size: 12px; color: #8b949e; margin: 0 0 10px 0;">Documentos sem cliente identificado. Cadastre o cliente no OneChat e reprocesse — ou envie pelo painel, escolhendo a empresa.</p>
+                    <div id="pendingList" class="error-list"></div>
+                </div>
+
                 <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 15px; margin-bottom: 5px;">
                     <h3 style="margin: 0;">Log de Atividades</h3>
                     <button id="btnClearLog" style="background: transparent; border: none; color: #8b949e; cursor: pointer; text-decoration: underline; font-size: 12px; padding: 0;">Limpar Histórico</button>
@@ -223,6 +239,10 @@
                             <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path></svg>
                             Selecionar
                         </button>
+                    </div>
+                    <div style="margin-top: 10px; display: flex; align-items: center; gap: 8px;">
+                        <input type="checkbox" id="chkPastaRede" style="cursor: pointer; width: auto; accent-color: #3fb950;">
+                        <label for="chkPastaRede" style="margin: 0; font-weight: normal; cursor: pointer;">A pasta de envio fica na rede (unidade mapeada ou servidor)</label>
                     </div>
 
                     <label style="margin-top: 15px;">Pasta de Backup</label>
