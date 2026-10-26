@@ -10,10 +10,21 @@ const { execFile } = require('child_process');
 
 const { store, salvarMapaSegredos, lerMapaSegredos } = require('./armazenamento');
 const { sendToRenderer, getMainWindow, log } = require('./ui');
+const { ehPastaDeRede } = require('./rede');
+const { emParalelo } = require('./arquivos');
+
+// Leituras simultâneas de .pfx. Medido em 2026-10-08 numa pasta de rede com 182
+// arquivos: desbloquear levou ~17 s com 8 ou 16 (o Node faz no máximo 4
+// leituras de arquivo de cada vez), contra minutos lendo um por um.
+const LEITURAS_SIMULTANEAS = 8;
+// Pasta de rede: varredura da lista de arquivos (sem fs.watch, ver rede.js).
+const VARREDURA_REDE_MS = 60 * 1000;
 
 const DIAS_AVISO_VENCIMENTO = 15;
 
 let certWatcher = null;
+let varreduraTimer = null;
+let pastaObservada = null;
 let cachedCertificates = []; // Armazena info descriptografada dos certs
 let refreshTimeout = null; // Atraso para chokidar
 
@@ -43,16 +54,53 @@ function triggerRefreshCertificates(folder) {
     }, 500); // 500ms de silêncio (debounce) antes de rodar o PowerShell
 }
 
-function startCertMonitoring(folder) {
-    if (certWatcher) certWatcher.close();
+function pararObservacao() {
+    if (certWatcher) { certWatcher.close(); certWatcher = null; }
+    if (varreduraTimer) { clearInterval(varreduraTimer); varreduraTimer = null; }
+}
+
+async function listarCertificados(folder) {
+    try {
+        return (await fs.promises.readdir(folder)).filter(ehCertificado);
+    } catch (e) {
+        return null; // pasta inacessível (rede fora, unidade desconectada)
+    }
+}
+
+// Pasta de rede: compara a lista de arquivos de tempos em tempos e só
+// atualiza quando ela muda. readdir é assíncrono e não trava a janela.
+function iniciarVarredura(folder) {
+    let assinatura = null;
+    varreduraTimer = setInterval(async () => {
+        const lista = await listarCertificados(folder);
+        if (!lista || pastaObservada !== folder) return;
+        const atual = lista.slice().sort().join('|');
+        if (assinatura !== null && atual !== assinatura) triggerRefreshCertificates(folder);
+        assinatura = atual;
+    }, VARREDURA_REDE_MS);
+}
+
+async function startCertMonitoring(folder) {
+    pararObservacao();
+    pastaObservada = folder;
+    if (await ehPastaDeRede(folder)) {
+        if (pastaObservada === folder) iniciarVarredura(folder);
+        return;
+    }
+    if (pastaObservada !== folder) return;
     certWatcher = chokidar.watch(folder, { persistent: true, depth: 0, ignoreInitial: true });
     certWatcher.on('all', (event, filePath) => {
         // Ignora subpastas garantindo que o arquivo está na raiz
         if (path.dirname(filePath) !== folder) return;
         if (ehCertificado(filePath)) triggerRefreshCertificates(folder);
     });
-    certWatcher.on('error', (error) => {
-        console.error('Erro no observador de certificados:', error);
+    // Rede que o detector não reconheceu: o fs.watch falha em loop e trava o
+    // processo. Na primeira falha, troca para a varredura.
+    certWatcher.on('error', () => {
+        if (!certWatcher || pastaObservada !== folder) return;
+        certWatcher.close();
+        certWatcher = null;
+        iniciarVarredura(folder);
     });
 }
 
@@ -142,101 +190,123 @@ function notificarVencimento(info, status) {
     store().set(chave, true);
 }
 
-async function refreshCertificates(folder, silent = false) {
-    if (!folder || !fs.existsSync(folder)) return;
-    const allFiles = await fs.promises.readdir(folder);
-    const files = allFiles.filter(ehCertificado);
+// Uma atualização por vez. Pedidos que chegam durante uma atualização viram
+// uma só, rodada no fim (antes, seleção da pasta + abertura do app + observador
+// disparavam várias leituras da pasta inteira ao mesmo tempo).
+let atualizacaoEmAndamento = null;
+let atualizarDeNovo = false;
 
-    if (!silent) {
-        sendToRenderer('certificates-loading', { total: files.length, current: 0, text: 'Atualizando lista' });
+function refreshCertificates(folder, silent = false) {
+    if (atualizacaoEmAndamento) {
+        atualizarDeNovo = true;
+        return atualizacaoEmAndamento;
+    }
+    atualizacaoEmAndamento = atualizarLista(folder, silent)
+        .catch((e) => console.error('Falha ao atualizar certificados:', e))
+        .finally(() => {
+            atualizacaoEmAndamento = null;
+            if (atualizarDeNovo) {
+                atualizarDeNovo = false;
+                refreshCertificates(store().get('folderCertificados'), true);
+            }
+        });
+    return atualizacaoEmAndamento;
+}
+
+// Avisa o progresso no máximo a cada 250 ms.
+function criarProgresso(total, texto, silent) {
+    let ultimo = 0;
+    return (feitos, forcar = false) => {
+        if (silent) return;
+        const agora = Date.now();
+        if (!forcar && agora - ultimo < 250) return;
+        ultimo = agora;
+        sendToRenderer('certificates-loading', { total, current: feitos, text: texto });
+    };
+}
+
+async function atualizarLista(folder, silent) {
+    if (!folder) return;
+    const files = await listarCertificados(folder);
+    if (!files) {
+        sendToRenderer('certificates-update', cachedCertificates);
+        log('error', `A pasta de certificados não está acessível: ${folder}`);
+        return;
     }
 
+    const progresso = criarProgresso(files.length, 'Atualizando lista', silent);
+    progresso(0, true);
+
     const savedPasswords = getSavedCertPasswords();
-    const installedCerts = await getInstalledThumbprints();
+    // A consulta ao Windows (PowerShell) roda junto com a leitura dos arquivos.
+    const instaladosPromise = getInstalledThumbprints();
+    const anterior = new Map(cachedCertificates.map(c => [c.file, c]));
 
-    const previousCache = [...cachedCertificates];
-    const newCache = [];
-
-    for (let i = 0; i < files.length; i++) {
-        const file = files[i];
-        let info = null;
-        let isLocked = true;
+    let feitos = 0;
+    const lidos = await emParalelo(files, LEITURAS_SIMULTANEAS, async (file) => {
         const filePath = path.join(folder, file);
-
-        // Verifica se já processamos esse arquivo antes
-        const prev = previousCache.find(c => c.file === file);
-        if (prev && !prev.isLocked && savedPasswords[file]) {
+        const senha = savedPasswords[file];
+        let info = null;
+        const prev = anterior.get(file);
+        if (prev && !prev.isLocked && senha) {
             // Reaproveita os dados sem ler o arquivo ou usar criptografia novamente
             info = { name: prev.name, validTo: prev.validTo, thumbprint: prev.thumbprint };
-            isLocked = false;
-        } else {
-            // Arquivo novo ou ainda bloqueado, vamos ler do disco
+        } else if (senha) {
+            // Sem senha não há o que ler: o certificado aparece bloqueado. Antes o
+            // app lia todos os arquivos assim mesmo — em rede, minutos de espera.
             try {
-                const pfxData = await fs.promises.readFile(filePath);
-                if (savedPasswords[file]) {
-                    info = extractCertInfo(pfxData, savedPasswords[file]);
-                    if (info) isLocked = false;
-                }
+                info = extractCertInfo(await fs.promises.readFile(filePath), senha);
             } catch (err) {
                 console.error(`Falha ao ler arquivo: ${file}`);
-                continue; // Pula este arquivo se não for possível ler
             }
         }
+        progresso(++feitos);
+        return { file, filePath, info };
+    });
 
+    const installedCerts = await instaladosPromise;
+    cachedCertificates = lidos.map(({ file, filePath, info }) => {
         let status = 'bloqueado';
         let instalado = false;
-        if (!isLocked && info) {
+        if (info) {
             instalado = installedCerts.includes(info.thumbprint);
             status = calcularStatus(info.validTo, instalado);
             notificarVencimento(info, status);
         }
-
-        newCache.push({
+        return {
             file,
             filePath,
-            isLocked,
+            isLocked: !info,
             name: info ? info.name : file,
             validTo: info ? info.validTo : null,
             thumbprint: info ? info.thumbprint : null,
             status,
             instalado,
-        });
-
-        if (!silent && i % 10 === 0) {
-            sendToRenderer('certificates-loading', { total: files.length, current: i + 1, text: 'Atualizando lista' });
-        }
-
-        // Pausa o processamento para manter a tela respondendo
-        await new Promise(r => setImmediate(r));
-    }
-
-    cachedCertificates = newCache;
+        };
+    });
     sendToRenderer('certificates-update', cachedCertificates);
 }
 
 async function desbloquear(passwordsToTry) {
     const folder = store().get('folderCertificados');
-    if (!folder || !fs.existsSync(folder)) return { success: false, unlockedCount: 0 };
+    const files = folder ? await listarCertificados(folder) : null;
+    if (!files) return { success: false, unlockedCount: 0 };
 
-    const allFiles = await fs.promises.readdir(folder);
-    const files = allFiles.filter(ehCertificado);
     const savedPasswords = getSavedCertPasswords();
-
-    const lockedFiles = files.filter(f => !savedPasswords[f]);
+    // Bloqueado = sem senha guardada, ou com uma senha que não abre o arquivo.
+    const bloqueados = new Set(cachedCertificates.filter(c => c.isLocked).map(c => c.file));
+    const lockedFiles = files.filter(f => !savedPasswords[f] || bloqueados.has(f));
     let unlockedCount = 0;
 
-    if (lockedFiles.length > 0) {
-        sendToRenderer('certificates-loading', { total: lockedFiles.length, current: 0, text: 'Desbloqueando certificados' });
-    }
-
-    for (let i = 0; i < lockedFiles.length; i++) {
-        const file = lockedFiles[i];
-        const filePath = path.join(folder, file);
+    const progresso = criarProgresso(lockedFiles.length, 'Desbloqueando certificados', false);
+    progresso(0, true);
+    let feitos = 0;
+    await emParalelo(lockedFiles, LEITURAS_SIMULTANEAS, async (file) => {
         try {
-            const pfxData = await fs.promises.readFile(filePath);
+            const pfxData = await fs.promises.readFile(path.join(folder, file));
+            // Testar a senha leva ~2 ms por arquivo (medido): não trava a janela.
             for (const pass of passwordsToTry) {
-                const info = extractCertInfo(pfxData, pass);
-                if (info) {
+                if (extractCertInfo(pfxData, pass)) {
                     savedPasswords[file] = pass;
                     unlockedCount++;
                     break;
@@ -245,14 +315,8 @@ async function desbloquear(passwordsToTry) {
         } catch (err) {
             console.error(`Falha ao ler arquivo no desbloqueio: ${file}`);
         }
-
-        if (i % 2 === 0) {
-            sendToRenderer('certificates-loading', { total: lockedFiles.length, current: i + 1, text: 'Desbloqueando certificados' });
-        }
-
-        // Yield para o event loop, mantendo a interface responsiva
-        await new Promise(r => setImmediate(r));
-    }
+        progresso(++feitos);
+    });
 
     if (unlockedCount > 0) saveCertPasswords(savedPasswords);
     // Atualiza a lista mesmo sem sucesso: o loading acima escondeu os cards.
@@ -294,9 +358,7 @@ async function excluir(thumbprint) {
 
     await runPowerShell(SCRIPT_REMOVER, { CERT_TP: thumbprint });
     try {
-        if (fs.existsSync(cert.filePath)) {
-            fs.unlinkSync(cert.filePath);
-        }
+        await fs.promises.unlink(cert.filePath).catch((e) => { if (e.code !== 'ENOENT') throw e; });
 
         const savedPasswords = getSavedCertPasswords();
         if (savedPasswords[cert.file]) {
@@ -312,9 +374,11 @@ async function excluir(thumbprint) {
     }
 }
 
+// Sem checagem síncrona da pasta: em unidade de rede desconectada, um
+// existsSync pode travar o processo até o Windows desistir da conexão.
 function iniciar() {
     const folder = store().get('folderCertificados', '');
-    if (folder && fs.existsSync(folder)) startCertMonitoring(folder);
+    if (folder) startCertMonitoring(folder);
 }
 
 function registrarIpc() {
@@ -323,6 +387,7 @@ function registrarIpc() {
         if (result.canceled) return null;
         const folder = result.filePaths[0];
         store().set('folderCertificados', folder);
+        cachedCertificates = []; // o cache é por nome de arquivo: não vale para outra pasta
         startCertMonitoring(folder);
         refreshCertificates(folder);
         return folder;

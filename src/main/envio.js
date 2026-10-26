@@ -16,7 +16,8 @@ const { sendToRenderer, log } = require('./ui');
 const sessao = require('./sessao');
 const { criarFila } = require('./fila');
 const { classifyFailure, describeError, resumoProcessar, motivoPendencia } = require('./erros');
-const { moveFile, isValidPdf, hashArquivo, nomeOriginal, nomeComCarimbo, estaDentroDe, listarPdfs } = require('./arquivos');
+const { moveFile, isValidPdf, existe, hashArquivo, nomeOriginal, nomeComCarimbo, estaDentroDe, listarPdfs } = require('./arquivos');
+const { ehPastaDeRede } = require('./rede');
 
 const fila = criarFila({ processar: processPdf, maxConcorrentes: MAX_CONCURRENT_UPLOADS });
 
@@ -60,9 +61,9 @@ function pastasDoJob(folder) {
     };
 }
 
-function moverPara(job, pasta, nome, rotulo) {
+async function moverPara(job, pasta, nome, rotulo) {
     try {
-        moveFile(job.filePath, pasta, nomeComCarimbo(nome));
+        await moveFile(job.filePath, pasta, nomeComCarimbo(nome));
         avisarMudancaNasPastas();
         return true;
     } catch (e) {
@@ -71,7 +72,7 @@ function moverPara(job, pasta, nome, rotulo) {
     }
 }
 
-function moverParaErros(job, nome) {
+async function moverParaErros(job, nome) {
     return moverPara(job, job.pastaErros, nome, 'a pasta de erro');
 }
 
@@ -82,13 +83,13 @@ const aguardandoBackup = new Set();
 // O envio já aconteceu: uma falha ao mover para o backup (pasta de rede fora,
 // arquivo aberto em outro programa) não pode virar "falha de envio", senão o
 // documento seria reenviado. Tenta mover de novo algumas vezes.
-function arquivar(job, nome, tentativa = 0) {
+async function arquivar(job, nome, tentativa = 0) {
     try {
-        moveFile(job.filePath, job.backupFolder, nomeComCarimbo(nome));
+        await moveFile(job.filePath, job.backupFolder, nomeComCarimbo(nome));
         aguardandoBackup.delete(job.filePath);
         avisarMudancaNasPastas();
     } catch (e) {
-        if (!fs.existsSync(job.filePath)) { aguardandoBackup.delete(job.filePath); return; }
+        if (!(await existe(job.filePath))) { aguardandoBackup.delete(job.filePath); return; }
         if (tentativa >= 5) {
             aguardandoBackup.delete(job.filePath);
             log('error', `${nome} foi enviado, mas não foi possível movê-lo para o backup (${e.message}). Ele continua na pasta de envio; mova-o à mão.`);
@@ -107,12 +108,12 @@ async function processPdf(job) {
     const nome = nomeOriginal(path.basename(filePath));
 
     // O arquivo pode ter sumido enquanto esperava na fila.
-    if (!fs.existsSync(filePath)) return;
+    if (!(await existe(filePath))) return;
 
     // Validação: arquivo inválido/corrompido vai direto para a pasta de erro.
-    if (!isValidPdf(filePath, MAX_PDF_BYTES)) {
+    if (!(await isValidPdf(filePath, MAX_PDF_BYTES))) {
         log('error', `Arquivo inválido (não é PDF ou passa de ${MAX_PDF_BYTES / (1024 * 1024)} MB): ${nome}`);
-        moverParaErros(job, nome);
+        await moverParaErros(job, nome);
         return;
     }
 
@@ -138,7 +139,7 @@ async function processPdf(job) {
 
         if (!autoSend) {
             log('success', `Enviado para análise: ${nome}`);
-            arquivar(job, nome);
+            await arquivar(job, nome);
             return;
         }
 
@@ -147,7 +148,7 @@ async function processPdf(job) {
         // cadastrar o cliente e reprocessar.
         if (!upload.empresa_encontrada) {
             log('warning', `Pendente: ${nome} — ${motivoPendencia(upload)}.`);
-            moverPara(job, job.pastaPendentes, nome, 'a pasta de pendentes');
+            await moverPara(job, job.pastaPendentes, nome, 'a pasta de pendentes');
             return;
         }
 
@@ -160,7 +161,7 @@ async function processPdf(job) {
         const resultado = resumoProcessar(procRes.data);
         if (!resultado.ok) {
             log('error', `Não enviado: ${nome} — ${resultado.motivo}`);
-            moverParaErros(job, nome);
+            await moverParaErros(job, nome);
             return;
         }
 
@@ -172,18 +173,18 @@ async function processPdf(job) {
         } else {
             log('success', `Enviado: ${nome}${protocolo}`);
         }
-        arquivar(job, nome);
+        await arquivar(job, nome);
     } catch (error) {
         await tratarFalha(job, error, nome);
     }
 }
 
 // Reagenda após erro do servidor, ou desiste se já esgotou as tentativas.
-function reagendarErroServidor(job, nome, detail) {
+async function reagendarErroServidor(job, nome, detail) {
     const atraso = SERVER_RETRY_MS[job.attempt];
     if (atraso === undefined) {
         log('error', `Erro em ${nome} após ${SERVER_RETRY_MS.length + 1} tentativas: ${detail}`);
-        moverParaErros(job, nome);
+        await moverParaErros(job, nome);
         return;
     }
     job.attempt++;
@@ -238,7 +239,7 @@ async function tratarFalha(job, error, nome) {
 
     // Erro definitivo (cadastro, dados do documento): repetir não resolve.
     log('error', `Erro em ${nome}: ${detail}`);
-    moverParaErros(job, nome);
+    await moverParaErros(job, nome);
 }
 
 function enfileirar(filePath, extra) {
@@ -248,10 +249,20 @@ function enfileirar(filePath, extra) {
 
 // --- Monitoramento ---
 
-function usarVarreduraPeriodica(folder) {
-    // Compartilhamento de rede (\\servidor\pasta): o Windows não entrega os
-    // eventos de arquivo novo de forma confiável, então o chokidar faz varredura.
-    return store().get('pasta_rede', false) || folder.startsWith('\\\\');
+// Varredura periódica em vez de fs.watch: na rede o fs.watch falha em loop e
+// cada falha trava o processo por segundos (ver rede.js). Vale para
+// \\servidor\pasta, unidade mapeada (Z:) e a opção marcada à mão.
+async function usarVarreduraPeriodica(folder) {
+    return store().get('pasta_rede', false) || await ehPastaDeRede(folder);
+}
+
+async function pastaAcessivel(folder) {
+    try {
+        await fs.promises.access(folder);
+        return true;
+    } catch (e) {
+        return false;
+    }
 }
 
 function pararObservador() {
@@ -259,7 +270,7 @@ function pararObservador() {
     if (verificacaoPastaTimer) { clearInterval(verificacaoPastaTimer); verificacaoPastaTimer = null; }
 }
 
-function iniciarObservador(config) {
+function iniciarObservador(config, polling) {
     pararObservador();
     const backupFolder = config.backupFolder ? path.resolve(config.backupFolder) : null;
     // Ignora as pastas de erro e pendentes (dentro da monitorada) e a de backup,
@@ -271,7 +282,6 @@ function iniciarObservador(config) {
         if (backupFolder && (resolved === backupFolder || resolved.startsWith(backupFolder + path.sep))) return true;
         return false;
     };
-    const polling = usarVarreduraPeriodica(config.folder);
     watcher = chokidar.watch(config.folder, {
         persistent: true,
         ignored,
@@ -285,26 +295,33 @@ function iniciarObservador(config) {
         if (filePath.toLowerCase().endsWith('.pdf')) enfileirar(filePath, extra);
     });
     watcher.on('error', (error) => {
+        if (!polling && configAtual === config) {
+            // Pasta de rede que o detector não reconheceu: passa para a varredura.
+            log('warning', 'A pasta de envio parece ser de rede. O DocSender passa a conferir a pasta a cada 3 segundos.');
+            iniciarObservador(config, true);
+            return;
+        }
         log('error', `Erro ao observar a pasta de envio: ${error.message}`);
     });
 
     // Se a pasta some (unidade de rede desconectada), o observador para sem
     // avisar. Confere a cada minuto e religa quando ela voltar.
     pastaInacessivel = false;
-    verificacaoPastaTimer = setInterval(() => {
-        const existe = fs.existsSync(config.folder);
+    verificacaoPastaTimer = setInterval(async () => {
+        const existe = await pastaAcessivel(config.folder);
+        if (configAtual !== config) return;
         if (!existe && !pastaInacessivel) {
             pastaInacessivel = true;
             log('error', `A pasta de envio não está acessível: ${config.folder}. Os envios voltam quando ela estiver disponível.`);
         } else if (existe && pastaInacessivel) {
             log('success', 'A pasta de envio voltou a ficar acessível.');
-            iniciarObservador(config);
+            iniciarObservador(config, polling);
         }
     }, 60 * 1000);
 }
 
-function iniciarMonitoramento(config) {
-    if (!config?.folder || !fs.existsSync(config.folder)) {
+async function iniciarMonitoramento(config) {
+    if (!config?.folder || !(await pastaAcessivel(config.folder))) {
         return { success: false, error: 'A pasta de envio não existe ou não está acessível.' };
     }
     if (!config.backupFolder) {
@@ -312,8 +329,10 @@ function iniciarMonitoramento(config) {
     }
     fila.limpar();
     configAtual = config;
-    iniciarObservador(config);
-    return { success: true, varreduraPeriodica: usarVarreduraPeriodica(config.folder) };
+    const polling = await usarVarreduraPeriodica(config.folder);
+    if (configAtual !== config) return { success: false, error: 'Monitoramento reiniciado.' };
+    iniciarObservador(config, polling);
+    return { success: true, varreduraPeriodica: polling };
 }
 
 // Os arquivos só saem da pasta monitorada quando o envio termina, então o que
@@ -339,15 +358,15 @@ function pastaEspecial(tipo) {
     return folder && nome ? path.join(folder, nome) : null;
 }
 
-function reprocessar(tipo, fileNames) {
+async function reprocessar(tipo, fileNames) {
     const dir = pastaEspecial(tipo);
     const folder = store().get('folderEnvio');
     const backupFolder = store().get('folderBackup');
-    if (!dir || !fs.existsSync(dir)) return { success: false, error: 'Nenhum arquivo para reprocessar.' };
+    if (!dir || !(await existe(dir))) return { success: false, error: 'Nenhum arquivo para reprocessar.' };
     if (!backupFolder) return { success: false, error: 'Defina a pasta de Backup em Configurações.' };
 
     // Sem argumento = reprocessar todos.
-    const todos = fs.readdirSync(dir).filter(f => f.toLowerCase().endsWith('.pdf'));
+    const todos = (await fs.promises.readdir(dir)).filter(f => f.toLowerCase().endsWith('.pdf'));
     const lista = (fileNames && fileNames.length) ? fileNames.filter(f => todos.includes(f)) : todos;
 
     for (const name of lista) {
@@ -358,13 +377,13 @@ function reprocessar(tipo, fileNames) {
     return { success: true, count: lista.length };
 }
 
-function excluir(tipo, fileName) {
+async function excluir(tipo, fileName) {
     const dir = pastaEspecial(tipo);
     if (!dir) return { success: false };
     const alvo = path.join(dir, fileName);
     if (!estaDentroDe(dir, alvo)) return { success: false };
     try {
-        if (fs.existsSync(alvo)) fs.unlinkSync(alvo);
+        await fs.promises.unlink(alvo).catch((e) => { if (e.code !== 'ENOENT') throw e; });
         avisarMudancaNasPastas();
         return { success: true };
     } catch (e) {

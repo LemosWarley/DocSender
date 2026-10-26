@@ -7,6 +7,25 @@ Mais recentes no topo.
 
 ---
 
+## 2026-10-08 — Visual novo: marca OneChat, tema claro e escuro
+
+**Status:** Vigente
+**Contexto:** pedido do Warley por uma refatoração completa do visual, "moderna".
+**Decisão:** interface refeita (`index.html`, `styles.css`, parte visual do `renderer.js`).
+Roxo do logo OneChat como cor de destaque; tema claro e escuro por tokens CSS em
+`:root` (segue o Windows, ou fixado em Configurações > Aparência, guardado em
+`localStorage` com a chave `docsender-tema`); Envios virou painel (estado do monitoramento,
+contadores, abas Atividade / Pendentes / Com erro); atividade com o mais recente no topo;
+certificados mostram razão social e CNPJ/CPF formatado separados (CN no padrão ICP-Brasil
+`NOME:DIGITOS`) e "vence em X dias".
+**Motivo:** fonte é a Segoe UI Variable do próprio Windows porque a CSP não permite fonte
+externa e o app precisa abrir sem rede.
+**Consequência:** cor nova entra como token em `styles.css`, nos dois temas — nunca
+hex solto no HTML ou no JS. Botões usam `--brand-btn`/`--danger-btn` (mais escuros que
+`--brand`/`--danger`) para o texto branco ser legível no tema escuro. Os IDs usados pelos
+testes de ponta a ponta foram mantidos.
+
+
 ## 2026-10-08 — Atualização automática adiada
 
 **Status:** Vigente

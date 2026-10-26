@@ -4,6 +4,29 @@
 
 ---
 
+## Pasta de rede (inclusive unidade mapeada) trava o app inteiro com `fs.watch`
+
+**Sintoma:** ao escolher uma pasta de certificados na rede (`Z:\CERTIFICADOS ICP 2 - BACKUP`,
+mapeada para `\\Bc\excel banco de dados`, 182 `.pfx`), o app congelou: não trocava de aba
+e não abria pelo ícone. Reaberto, congelava de novo — a pasta fica salva.
+**Causa (medida em 2026-10-08):** o `fs.watch` (usado pelo chokidar) falha em loop em pasta
+de rede — 89 erros `UNKNOWN: unknown error, watch` em 20 s — e cada falha trava o processo
+principal de 0,7 a 4 s. O processo principal é quem desenha a janela, então tudo para. De
+quebra, a lista lia os 182 arquivos um por um (~200 ms cada pela rede) mesmo sem senha
+para abri-los, e terminava em mais de 150 s.
+**Solução:** `src/main/rede.js` detecta pasta de rede (`\\servidor` ou unidade com DriveType
+4 no `Win32_LogicalDisk`) e, nela, nunca se usa `fs.watch`: certificados por varredura da
+lista a cada 60 s, envio por `usePolling`. Se o detector errar, a primeira falha do
+observador troca para a varredura. Arquivo sem senha não é lido; os com senha são lidos 8
+por vez. Nenhuma operação síncrona de arquivo (`existsSync`, `renameSync`...) no caminho
+de pasta do usuário. Resultado: lista pronta em 1,1 s e desbloqueio de 182 arquivos em
+~17 s, com a janela respondendo em até 7 ms.
+**Não faça:** testar só com pasta local — o problema não aparece. Para reproduzir, use a
+pasta de rede real com `DOCSENDER_PERFIL` (perfil isolado). E não espere ganho acima de 8
+leituras simultâneas: o Node faz no máximo 4 operações de arquivo de cada vez.
+
+---
+
 ## HTTP 200 do `documentos-processar` não quer dizer que o documento saiu
 
 **Sintoma:** o log mostra "Enviado" e o PDF vai para o backup, mas o cliente não recebe.

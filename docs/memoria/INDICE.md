@@ -31,24 +31,26 @@ Foto do agora: onde o projeto está, o que está em andamento, pendências. — 
 
 ## docs/memoria/decisoes.md
 
-Append-only. Por que cada escolha foi feita, em ordem cronológica inversa. — 4 KB, 7 seções.
+Append-only. Por que cada escolha foi feita, em ordem cronológica inversa. — 5 KB, 8 seções.
 
-- `10-21` — 2026-10-08 — Atualização automática adiada
-- `22-33` — 2026-10-08 — PDF sem cliente identificado vai para `_Pendentes`
-- `34-46` — 2026-10-08 — Falha da IA no upload responde 503
-- `47-55` — 2026-10-08 — Testes com o executor nativo do Node
-- `56-64` — 2026-10-08 — Processo principal dividido em `src/main/`
-- `65-73` — 2026-08-09 — Supabase próprio do OneChat
-- `74-80` — 2026-07-05 — Electron com instalador NSIS por usuário
+- `10-28` — 2026-10-08 — Visual novo: marca OneChat, tema claro e escuro
+- `29-40` — 2026-10-08 — Atualização automática adiada
+- `41-52` — 2026-10-08 — PDF sem cliente identificado vai para `_Pendentes`
+- `53-65` — 2026-10-08 — Falha da IA no upload responde 503
+- `66-74` — 2026-10-08 — Testes com o executor nativo do Node
+- `75-83` — 2026-10-08 — Processo principal dividido em `src/main/`
+- `84-92` — 2026-08-09 — Supabase próprio do OneChat
+- `93-99` — 2026-07-05 — Electron com instalador NSIS por usuário
 
 ## docs/memoria/armadilhas.md
 
-Append-only. O que já quebrou e o que a aparência esconde. — 3 KB, 7 seções.
+Append-only. O que já quebrou e o que a aparência esconde. — 4 KB, 8 seções.
 
-- `7-16` — HTTP 200 do `documentos-processar` não quer dizer que o documento saiu
-- `17-25` — `empresa_encontrada: false` mistura três casos
-- `26-32` — Limite de tamanho: o servidor aceita 10 MB
-- `33-41` — Rodar o app de desenvolvimento usa o perfil do app instalado
-- `42-48` — `ELECTRON_RUN_AS_NODE=1` no terminal do VS Code
-- `49-56` — Login manual não liga o monitoramento sozinho
-- `57-62` — electron-builder 26 recusa `win.publisherName`
+- `7-29` — Pasta de rede (inclusive unidade mapeada) trava o app inteiro com `fs.watch`
+- `30-39` — HTTP 200 do `documentos-processar` não quer dizer que o documento saiu
+- `40-48` — `empresa_encontrada: false` mistura três casos
+- `49-55` — Limite de tamanho: o servidor aceita 10 MB
+- `56-64` — Rodar o app de desenvolvimento usa o perfil do app instalado
+- `65-71` — `ELECTRON_RUN_AS_NODE=1` no terminal do VS Code
+- `72-79` — Login manual não liga o monitoramento sozinho
+- `80-85` — electron-builder 26 recusa `win.publisherName`

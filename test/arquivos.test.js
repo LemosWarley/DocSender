@@ -4,7 +4,20 @@ const fs = require('fs');
 const os = require('os');
 const path = require('path');
 const crypto = require('crypto');
-const { nomeOriginal, nomeComCarimbo, estaDentroDe, isValidPdf, hashArquivo, moveFile, listarPdfs } = require('../src/main/arquivos');
+const { nomeOriginal, nomeComCarimbo, estaDentroDe, isValidPdf, hashArquivo, moveFile, listarPdfs, emParalelo } = require('../src/main/arquivos');
+
+test('emParalelo respeita o limite e devolve na ordem', async () => {
+    let ativos = 0, pico = 0;
+    const saida = await emParalelo([30, 5, 20, 1, 10, 2], 3, async (ms, i) => {
+        ativos++; pico = Math.max(pico, ativos);
+        await new Promise(r => setTimeout(r, ms));
+        ativos--;
+        return i * 10;
+    });
+    assert.deepEqual(saida, [0, 10, 20, 30, 40, 50]);
+    assert.equal(pico, 3);
+    assert.deepEqual(await emParalelo([], 4, async () => 1), []);
+});
 
 test('o nome enviado ao servidor perde todos os prefixos de horário', () => {
     assert.equal(nomeOriginal('DAS março.pdf'), 'DAS março.pdf');
@@ -33,18 +46,20 @@ test('validação, hash em streaming, mover e listar', async () => {
         fs.writeFileSync(pdf, conteudo);
         fs.writeFileSync(path.join(dir, 'falso.pdf'), 'não é pdf');
 
-        assert.equal(isValidPdf(pdf, 1024), true);
-        assert.equal(isValidPdf(path.join(dir, 'falso.pdf'), 1024), false);
-        assert.equal(isValidPdf(pdf, 4), false); // acima do limite
+        assert.equal(await isValidPdf(pdf, 1024), true);
+        assert.equal(await isValidPdf(path.join(dir, 'falso.pdf'), 1024), false);
+        assert.equal(await isValidPdf(pdf, 4), false); // acima do limite
+        assert.equal(await isValidPdf(path.join(dir, 'nao-existe.pdf'), 1024), false);
 
         const esperado = crypto.createHash('sha256').update(conteudo).digest('hex');
         assert.equal(await hashArquivo(pdf), esperado);
 
-        const destino = moveFile(pdf, path.join(dir, '_Pendentes'), nomeComCarimbo('a.pdf', 1728390000000));
+        const destino = await moveFile(pdf, path.join(dir, '_Pendentes'), nomeComCarimbo('a.pdf', 1728390000000));
         assert.equal(fs.existsSync(destino), true);
         assert.equal(fs.existsSync(pdf), false);
 
-        const lista = listarPdfs(path.join(dir, '_Pendentes'));
+        const lista = await listarPdfs(path.join(dir, '_Pendentes'));
+        assert.deepEqual(await listarPdfs(path.join(dir, 'nao-existe')), []);
         assert.equal(lista.length, 1);
         assert.equal(lista[0].nomeOriginal, 'a.pdf');
     } finally {

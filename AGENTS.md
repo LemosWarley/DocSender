@@ -86,6 +86,9 @@ Destino de cada PDF da pasta de envio:
 - O prefixo de horário (`1728390000000_`) é só para nome único em disco: o nome enviado
   ao servidor é sempre o original (`nomeOriginal()` em `src/main/arquivos.js`).
 - Valores dinâmicos para o PowerShell vão por variável de ambiente, nunca interpolados.
+- Cores só por token em `src/styles.css` (`:root` claro, bloco escuro duplicado para
+  `prefers-color-scheme` e para `data-theme="dark"`). Ícones são SVG inline e herdam o
+  traço do CSS. A CSP proíbe recurso externo: nada de fonte ou script de CDN.
 
 ## Cuidados
 

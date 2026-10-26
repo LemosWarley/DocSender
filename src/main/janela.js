@@ -1,6 +1,6 @@
 // Janela principal, bandeja, início com o Windows e configurações gerais.
 
-const { app, BrowserWindow, ipcMain, Tray, Menu, dialog, shell } = require('electron');
+const { app, BrowserWindow, ipcMain, Tray, Menu, dialog, shell, nativeTheme } = require('electron');
 const path = require('path');
 const fs = require('fs');
 const axios = require('axios');
@@ -27,8 +27,10 @@ function urlExternaPermitida(url) {
 
 function criarJanela() {
     const win = new BrowserWindow({
-        width: 1100, height: 780, minWidth: 900, minHeight: 680,
-        title: "DocSender", show: false, frame: false, backgroundColor: '#0a0e1a',
+        width: 1180, height: 800, minWidth: 940, minHeight: 680,
+        // Mesmo fundo da tela (styles.css, --bg), para não piscar ao abrir.
+        title: "DocSender", show: false, frame: false,
+        backgroundColor: nativeTheme.shouldUseDarkColors ? '#0c0c11' : '#f5f5f8',
         icon: ICONE,
         webPreferences: {
             preload: path.join(__dirname, '..', 'preload.js'),
