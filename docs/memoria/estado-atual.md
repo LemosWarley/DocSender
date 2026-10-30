@@ -1,8 +1,20 @@
 # Estado atual
 
-**Última atualização:** 2026-10-08
+**Última atualização:** 2026-10-30
 
 ## Onde o projeto está
+
+**2026-10-30 — 1.2.1 gerada, não publicada.** `dist/DocSender Setup 1.2.1.exe` (121 MB), com o
+`app.asar` conferido (traz `x-envio-tentativa` e "Documento reprocessado com sucesso"). É a 1.2.0 +
+**reprocessamento**: cada arquivo que entra na pasta ganha um código (`tentativaId`); repetição
+automática reusa o código e não reenvia; a mesma guia recolocada na pasta é reenviada com o mesmo
+protocolo (plano em `onechattotal/docs/plans/docsender-reprocessamento.md`, servidor já em produção).
+⚠️ Os escritórios estão na **1.1.4**: publicar a 1.2.1 leva junto tudo da 1.2.0, que só foi testada com
+o login real nesta máquina. Publicação: Super Admin → DocSender → enviar o `.exe` (sobe para a raiz do
+bucket `documentos` como `DocSenderSetup_v1.2.1.exe`, `is_current = false`) → baixar e instalar numa
+máquina → "definir como atual". A 1.3.0 continua reservada para a Fase 4.
+
+### Antes (2026-10-08)
 
 Em produção nos escritórios a versão **1.1.4** (Electron 29). A **1.2.0** está na `main`
 (commit `038f587`), com o instalador gerado em `dist/`, **ainda não publicado** no Super
