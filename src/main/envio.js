@@ -2,6 +2,7 @@
 
 const { ipcMain } = require('electron');
 const fs = require('fs');
+const crypto = require('crypto');
 const path = require('path');
 const chokidar = require('chokidar');
 const axios = require('axios');
@@ -131,7 +132,7 @@ async function processPdf(job) {
         form.append('file', fs.createReadStream(filePath), nome);
 
         const uploadRes = await axios.post(`${API_BASE_URL}/functions/v1/documentos-upload`, form, {
-            headers: { ...form.getHeaders(), 'Authorization': `Bearer ${await sessao.ensureValidToken()}`, 'apikey': API_KEY, 'x-idempotency-key': idempotencyKey },
+            headers: { ...form.getHeaders(), 'Authorization': `Bearer ${await sessao.ensureValidToken()}`, 'apikey': API_KEY, 'x-idempotency-key': idempotencyKey, 'x-envio-tentativa': job.tentativaId },
             maxContentLength: Infinity, maxBodyLength: Infinity, timeout: 120000
         });
         marcarRedeOk();
@@ -154,7 +155,7 @@ async function processPdf(job) {
 
         // Token pedido de novo: o upload inclui análise de IA e pode demorar
         // o bastante para o token capturado antes dele já não servir.
-        const procRes = await axios.post(`${API_BASE_URL}/functions/v1/documentos-processar`, { envio_id: upload.envio_id }, {
+        const procRes = await axios.post(`${API_BASE_URL}/functions/v1/documentos-processar`, { envio_id: upload.envio_id, tentativa_id: job.tentativaId, origem: 'app' }, {
             headers: { 'Authorization': `Bearer ${await sessao.ensureValidToken()}`, 'apikey': API_KEY, 'Content-Type': 'application/json' }, timeout: 60000
         });
 
@@ -166,8 +167,13 @@ async function processPdf(job) {
         }
 
         const protocolo = resultado.protocolo ? ` (protocolo ${resultado.protocolo})` : '';
+        const numero = resultado.numeroEnvio ? `, ${resultado.numeroEnvio}º envio` : '';
         if (resultado.idempotente) {
             log('success', `Já havia sido enviado: ${nome}${protocolo}`);
+        } else if (resultado.reprocessamento && resultado.parcial) {
+            log('warning', `Documento reprocessado com falhas: ${nome}${protocolo}${numero}. Não chegou para: ${resultado.falhas.join(', ')}.`);
+        } else if (resultado.reprocessamento) {
+            log('success', `Documento reprocessado com sucesso: ${nome} (protocolo ${resultado.protocolo}${numero})`);
         } else if (resultado.parcial) {
             log('warning', `Enviado com falhas: ${nome}${protocolo}. Não chegou para: ${resultado.falhas.join(', ')}.`);
         } else {
@@ -242,9 +248,13 @@ async function tratarFalha(job, error, nome) {
     await moverParaErros(job, nome);
 }
 
+// Cada arquivo que entra na pasta é uma ENTRADA, com código próprio. As retentativas
+// automáticas do mesmo job (rede, token, erro do servidor) repetem o código — o servidor
+// sabe que é repetição e não reenvia. A mesma guia colocada de novo na pasta é outra
+// entrada: o servidor reprocessa e envia outra vez.
 function enfileirar(filePath, extra) {
     if (aguardandoBackup.has(filePath)) return;
-    fila.adicionar({ filePath, ...extra });
+    fila.adicionar({ filePath, ...extra, tentativaId: crypto.randomUUID() });
 }
 
 // --- Monitoramento ---

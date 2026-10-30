@@ -70,6 +70,10 @@ function resumoProcessar(data) {
         ok: true,
         protocolo,
         idempotente: !!d.idempotente,
+        // Documento já enviado que entrou de novo na pasta: o servidor reenviou com o
+        // mesmo protocolo (docs/plans/docsender-reprocessamento.md no onechattotal).
+        reprocessamento: !!d.reprocessamento,
+        numeroEnvio: Number.isInteger(d.numero_envio) ? d.numero_envio : null,
         parcial: falhas.length > 0,
         falhas: falhas.map(f => `${f.contato} (${f.metodo})`),
     };

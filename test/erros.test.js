@@ -66,3 +66,17 @@ test('motivo da pendência', () => {
     assert.match(motivoPendencia({ cnpj_identificado: '12.345.678/0001-90' }), /não está cadastrado/);
     assert.match(motivoPendencia({ cnpj_identificado: '12345678', multiplas_filiais: true }), /várias filiais/);
 });
+
+test('reprocessamento: documento já enviado que entrou de novo na pasta', () => {
+    const r = resumoProcessar({ success: true, protocolo: 'DOC-20261030-001', reprocessamento: true, numero_envio: 2, results: [{ contato: 'Ana', metodo: 'whatsapp', status: 'enviado' }] });
+    assert.equal(r.ok, true);
+    assert.equal(r.reprocessamento, true);
+    assert.equal(r.numeroEnvio, 2);
+    assert.equal(r.idempotente, false);
+});
+
+test('resposta antiga, sem os campos de reprocessamento, segue como antes', () => {
+    const r = resumoProcessar({ success: true, protocolo: 'DOC-1', results: [] });
+    assert.equal(r.reprocessamento, false);
+    assert.equal(r.numeroEnvio, null);
+});
