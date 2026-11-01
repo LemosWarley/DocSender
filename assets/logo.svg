@@ -1,69 +1,17 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="100%" height="100%">
-  <!-- Definições de Gradientes e Sombra Estilizada -->
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024" role="img" aria-labelledby="title desc">
+  <title id="title">OneChat app icon</title>
+  <desc id="desc">Rounded square black app icon with the OneChat symbol centered.</desc>
   <defs>
-    <!-- Gradiente Roxo Premium (Roxo Vibrante para Violeta Real Escuro) -->
-    <linearGradient id="purpleGrad" x1="0%" y1="0%" x2="0%" y2="100%">
-      <stop offset="0%" stop-color="#8b44ff" />
-      <stop offset="100%" stop-color="#5b21b6" />
-    </linearGradient>
-
-    <!-- Sombra Projetada Suave de Alta Qualidade para dar Profundidade -->
-    <filter id="premiumShadow" x="-10%" y="-10%" width="120%" height="120%">
-      <feDropShadow dx="0" dy="16" stdDeviation="20" flood-color="#000000" flood-opacity="0.25"/>
-    </filter>
+    <clipPath id="cutout" clipPathUnits="userSpaceOnUse">
+      <path d="M 0 0 H 235 V 200 H 0 Z M 153 100 A 71 71 0 1 0 11 100 A 71 71 0 1 0 153 100 Z" clip-rule="evenodd"/>
+    </clipPath>
   </defs>
-
-  <g filter="url(#premiumShadow)">
-    <!-- 1. Background: Squircle (Quadrado Arredondado Moderno) com Gradiente Roxo -->
-    <rect x="24" y="24" width="464" height="464" rx="120" ry="120" fill="url(#purpleGrad)" />
-
-    <!-- 2. Balões OneChat Assinatura (Contornos brancos grossos de 36px) -->
-    <!-- Balão de Trás -->
-    <path d="M 170 270 H 230 A 60 60 0 1 0 170 210 V 270 Z" 
-          fill="none" 
-          stroke="#ffffff" 
-          stroke-width="36" 
-          stroke-linecap="round" 
-          stroke-linejoin="round" />
-
-    <!-- Máscara de Ocultação do Balão da Frente (Gradiente de Fundo) -->
-    <!-- Impede que as linhas do balão traseiro cruzem visualmente o balão frontal -->
-    <path d="M 100 350 H 160 A 60 60 0 1 0 100 290 V 350 Z" 
-          fill="url(#purpleGrad)" 
-          stroke="none" />
-
-    <!-- Balão da Frente -->
-    <path d="M 100 350 H 160 A 60 60 0 1 0 100 290 V 350 Z" 
-          fill="none" 
-          stroke="#ffffff" 
-          stroke-width="36" 
-          stroke-linecap="round" 
-          stroke-linejoin="round" />
-
-    <!-- 3. Ondas de Transmissão / Sinal (Lilás Suave Semitransparente) -->
-    <!-- Emanando simetricamente à direita dos balões -->
-    <!-- Onda Interna -->
-    <path d="M 335 195 C 360 220, 360 292, 335 317" 
-          fill="none" 
-          stroke="#e9d5ff" 
-          stroke-width="24" 
-          stroke-linecap="round" 
-          opacity="0.8" />
-
-    <!-- Onda Central -->
-    <path d="M 370 165 C 405 205, 405 307, 370 347" 
-          fill="none" 
-          stroke="#e9d5ff" 
-          stroke-width="20" 
-          stroke-linecap="round" 
-          opacity="0.55" />
-
-    <!-- Onda Externa -->
-    <path d="M 405 135 C 450 185, 450 327, 405 377" 
-          fill="none" 
-          stroke="#e9d5ff" 
-          stroke-width="16" 
-          stroke-linecap="round" 
-          opacity="0.3" />
+  <rect x="0" y="0" width="1024" height="1024" rx="220" ry="220" fill="#05080B"/>
+  <g transform="translate(112 171) scale(3.4)">
+    <path d="M 209.339 52.764 A 72 72 0 1 0 209.339 147.236 L 185.943 126.898 A 41 41 0 1 1 185.943 73.102 Z" fill="#22E7B3" clip-path="url(#cutout)"/>
+    <path d="M 153 100 A 71 71 0 1 0 11 100 A 71 71 0 1 0 153 100 Z M 122 100 A 40 40 0 1 1 42 100 A 40 40 0 1 1 122 100 Z" fill="#FFFFFF" fill-rule="evenodd"/>
+    <circle cx="61" cy="100" r="7.7" fill="#22E7B3"/>
+    <circle cx="82" cy="100" r="7.7" fill="#70F4DC"/>
+    <circle cx="103" cy="100" r="7.7" fill="#22E7B3"/>
   </g>
 </svg>
