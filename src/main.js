@@ -5,6 +5,7 @@
 //   erros.js         classificação de falhas e leitura das respostas
 //   certificados.js  certificados digitais
 //   janela.js        janela, bandeja, configurações
+//   notas.js         "Baixar notas": XML do OneXml numa pasta do computador
 const { app, powerMonitor } = require('electron');
 const path = require('path');
 
@@ -25,11 +26,13 @@ const janela = require('./main/janela');
 const sessao = require('./main/sessao');
 const envio = require('./main/envio');
 const certificados = require('./main/certificados');
+const notas = require('./main/notas');
 
 janela.registrarIpc();
 sessao.registrarIpc();
 envio.registrarIpc();
 certificados.registrarIpc();
+notas.registrarIpc();
 
 app.whenReady().then(() => {
     janela.criarJanela();
@@ -39,6 +42,8 @@ app.whenReady().then(() => {
     if (app.isPackaged) janela.configurarInicioAutomatico(store().get('iniciar_com_windows', false));
     sessao.iniciarVerificacaoPeriodica();
     certificados.iniciar();
+    // Baixar notas: sem sessão ou desligado, cada rodada sai na primeira checagem.
+    notas.iniciar();
 
     // Ao voltar da suspensão o intervalo de 5 min está atrasado e o access token
     // provavelmente venceu. Revalida na hora e destrava a fila, em vez de deixar

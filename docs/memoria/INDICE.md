@@ -21,26 +21,27 @@ Regravar este índice depois de escrever na memória:
 
 ## docs/memoria/estado-atual.md
 
-Foto do agora: onde o projeto está, o que está em andamento, pendências. — 2 KB, 5 seções.
+Foto do agora: onde o projeto está, o que está em andamento, pendências. — 4 KB, 5 seções.
 
-- `5-16` — Onde o projeto está
-- `17-25` — Em andamento
-- `26-33` — Próximos passos
-- `34-39` — Pendências e bloqueios
-- `40-52` — Contexto que não está no código
+- `5-42` — Onde o projeto está
+- `43-51` — Em andamento
+- `52-59` — Próximos passos
+- `60-65` — Pendências e bloqueios
+- `66-78` — Contexto que não está no código
 
 ## docs/memoria/decisoes.md
 
-Append-only. Por que cada escolha foi feita, em ordem cronológica inversa. — 5 KB, 8 seções.
+Append-only. Por que cada escolha foi feita, em ordem cronológica inversa. — 6 KB, 9 seções.
 
-- `10-28` — 2026-10-08 — Visual novo: marca OneChat, tema claro e escuro
-- `29-40` — 2026-10-08 — Atualização automática adiada
-- `41-52` — 2026-10-08 — PDF sem cliente identificado vai para `_Pendentes`
-- `53-65` — 2026-10-08 — Falha da IA no upload responde 503
-- `66-74` — 2026-10-08 — Testes com o executor nativo do Node
-- `75-83` — 2026-10-08 — Processo principal dividido em `src/main/`
-- `84-92` — 2026-08-09 — Supabase próprio do OneChat
-- `93-99` — 2026-07-05 — Electron com instalador NSIS por usuário
+- `10-27` — 2026-11-15 — "Baixar notas": a tela é do app, a escolha é do servidor, a pasta é do computador
+- `28-46` — 2026-10-08 — Visual novo: marca OneChat, tema claro e escuro
+- `47-58` — 2026-10-08 — Atualização automática adiada
+- `59-70` — 2026-10-08 — PDF sem cliente identificado vai para `_Pendentes`
+- `71-83` — 2026-10-08 — Falha da IA no upload responde 503
+- `84-92` — 2026-10-08 — Testes com o executor nativo do Node
+- `93-101` — 2026-10-08 — Processo principal dividido em `src/main/`
+- `102-110` — 2026-08-09 — Supabase próprio do OneChat
+- `111-117` — 2026-07-05 — Electron com instalador NSIS por usuário
 
 ## docs/memoria/armadilhas.md
 

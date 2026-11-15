@@ -7,6 +7,24 @@ Mais recentes no topo.
 
 ---
 
+## 2026-11-15 — "Baixar notas": a tela é do app, a escolha é do servidor, a pasta é do computador
+
+**Status:** Vigente
+
+- Ligar/desligar, empresas, tipos e lados ficam no servidor, **por usuário** (`onexml-sincronizar`);
+  ninguém vê a escolha de outro. Pasta, modelo de pastas e marcadores ficam aqui, em
+  `notas.<id do usuário>` — outro login no mesmo computador tem a sua.
+- O marcador só avança depois de a página inteira estar na pasta. Falha de download segura o
+  marcador; a próxima rodada repete a página e pula o que já existe.
+- Arquivo = `<chave>.xml` (só dígitos), gravado descompactado, por arquivo `.parcial` + rename.
+  Pasta da empresa reconhecida pelo documento (`NOME - documento`), para sobreviver à troca de razão
+  social. Cancelada vai para `Canceladas\` dentro do tipo.
+- Só baixa de `/storage/v1/object/sign/` do mesmo endereço do Supabase do app, e só grava dentro da
+  pasta escolhida (`estaDentroDe`).
+- Rodada a cada 20 min (a busca do OneXml roda em rodadas noturnas; tempo real não ajuda).
+
+---
+
 ## 2026-10-08 — Visual novo: marca OneChat, tema claro e escuro
 
 **Status:** Vigente

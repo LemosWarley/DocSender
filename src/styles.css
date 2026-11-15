@@ -793,3 +793,29 @@ input[readonly] { background: var(--surface-2); cursor: default; }
 @media (prefers-reduced-motion: reduce) {
     *, *::before, *::after { animation: none !important; transition: none !important; }
 }
+
+/* ===== Baixar notas ===== */
+.notas-aviso {
+    padding: 28px; border: 1px dashed var(--border-strong); border-radius: var(--radius);
+    color: var(--text-2); text-align: center; background: var(--surface);
+}
+.notas-lista { padding: 0; max-height: 52vh; overflow-y: auto; }
+.notas-linha {
+    display: flex; align-items: center; justify-content: space-between; gap: 16px;
+    padding: 10px 16px;
+}
+.notas-linha + .notas-linha { border-top: 1px solid var(--border); }
+.notas-linha.is-off .notas-nome strong { color: var(--text-2); font-weight: 500; }
+.notas-marca { display: flex; align-items: center; gap: 12px; min-width: 0; flex: 1; cursor: pointer; }
+.notas-marca input { width: 16px; height: 16px; accent-color: var(--brand); flex-shrink: 0; }
+.notas-nome { display: flex; flex-direction: column; min-width: 0; }
+.notas-nome strong { font-size: 13.5px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.notas-nome small { font-size: 12px; color: var(--text-3); }
+.notas-opcoes { display: flex; align-items: center; gap: 6px; flex-shrink: 0; flex-wrap: wrap; justify-content: flex-end; }
+.notas-sep { width: 1px; height: 18px; background: var(--border); margin: 0 4px; }
+.chip.chip-sm { height: 26px; padding: 0 10px; font-size: 12px; }
+.chip:disabled { opacity: 0.45; cursor: default; }
+.notas-rodape {
+    display: flex; align-items: center; justify-content: space-between; gap: 16px;
+    padding: 4px 0 16px;
+}

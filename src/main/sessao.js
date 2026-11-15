@@ -109,18 +109,28 @@ function invalidarToken() {
     tokenExpiresAt = 0;
 }
 
+function lerPayload() {
+    if (!currentAccessToken) return null;
+    try {
+        const payload = currentAccessToken.split('.')[1];
+        return JSON.parse(Buffer.from(payload.replace(/-/g, '+').replace(/_/g, '/'), 'base64').toString('utf8'));
+    } catch (e) {
+        return null;
+    }
+}
+
 // Lê o e-mail do payload do JWT (o Supabase inclui `email`). Serve só para
 // exibir na interface ao retomar a sessão — quem valida o token é o servidor.
 function getEmail() {
-    if (currentAccessToken) {
-        try {
-            const payload = currentAccessToken.split('.')[1];
-            const json = Buffer.from(payload.replace(/-/g, '+').replace(/_/g, '/'), 'base64').toString('utf8');
-            const email = JSON.parse(json).email;
-            if (email) return email;
-        } catch (e) { /* cai no e-mail salvo */ }
-    }
-    return store().get('saved_email', '');
+    const email = lerPayload()?.email;
+    return email || store().get('saved_email', '');
+}
+
+// Id do usuário logado (`sub` do JWT). Separa as preferências locais de cada login neste
+// computador ("Baixar notas"); não autoriza nada — o servidor confere o token.
+function getUserId() {
+    const sub = lerPayload()?.sub;
+    return typeof sub === 'string' && /^[0-9a-f-]{36}$/i.test(sub) ? sub : null;
 }
 
 // Tenta re-logar silenciosamente com as credenciais salvas (a senha é guardada criptografada).
@@ -272,4 +282,5 @@ module.exports = {
     requestReconnect,
     iniciarVerificacaoPeriodica,
     getEmail,
+    getUserId,
 };

@@ -576,14 +576,18 @@ function switchSection(s) {
     navProfile.classList.toggle('active', s === 'profile');
     navMonitor.classList.toggle('active', s === 'monitor');
     navCertificados.classList.toggle('active', s === 'certificados');
+    $('navNotas').classList.toggle('active', s === 'notas');
     navConfiguracoes.classList.toggle('active', s === 'configuracoes');
 
     sectionProfile.style.display = s === 'profile' ? 'block' : 'none';
     sectionMonitor.style.display = s === 'monitor' ? 'flex' : 'none';
     sectionCertificados.style.display = s === 'certificados' ? 'flex' : 'none';
+    $('sectionNotas').style.display = s === 'notas' ? 'block' : 'none';
     sectionConfiguracoes.style.display = s === 'configuracoes' ? 'block' : 'none';
 
     if (s === 'monitor') { syncMonitorButtons(); loadFolderFiles(); }
+    // A tela de notas (notas-tela.js) busca a configuração do servidor ao abrir.
+    if (s === 'notas' && typeof abrirTelaNotas === 'function') abrirTelaNotas();
     // Escondido, o campo não tem largura para rolar: refaz ao aparecer.
     if (s === 'configuracoes') [inputEnvio, inputBackup, inputCertFolder].forEach(i => mostrarCaminho(i, i.value));
 }
@@ -591,6 +595,7 @@ function switchSection(s) {
 navProfile.addEventListener('click', () => switchSection('profile'));
 navMonitor.addEventListener('click', () => switchSection('monitor'));
 navCertificados.addEventListener('click', () => switchSection('certificados'));
+$('navNotas').addEventListener('click', () => switchSection('notas'));
 navConfiguracoes.addEventListener('click', () => switchSection('configuracoes'));
 
 btnSelectEnvio.addEventListener('click', async () => {

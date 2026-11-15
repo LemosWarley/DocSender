@@ -57,6 +57,10 @@
                     <svg class="icon" viewBox="0 0 24 24"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><polyline points="9 12 11 14 15 10"/></svg>
                     <span>Certificados</span>
                 </button>
+                <button id="navNotas" class="nav-btn">
+                    <svg class="icon" viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><path d="M12 11v6"/><polyline points="9 14 12 17 15 14"/></svg>
+                    <span>Baixar notas</span>
+                </button>
                 <button id="navConfiguracoes" class="nav-btn">
                     <svg class="icon" viewBox="0 0 24 24"><line x1="4" y1="21" x2="4" y2="14"/><line x1="4" y1="10" x2="4" y2="3"/><line x1="12" y1="21" x2="12" y2="12"/><line x1="12" y1="8" x2="12" y2="3"/><line x1="20" y1="21" x2="20" y2="16"/><line x1="20" y1="12" x2="20" y2="3"/><line x1="1" y1="14" x2="7" y2="14"/><line x1="9" y1="8" x2="15" y2="8"/><line x1="17" y1="16" x2="23" y2="16"/></svg>
                     <span>Configurações</span>
@@ -305,6 +309,82 @@
                 </div>
             </section>
 
+            <!-- ===== Baixar notas (XML do OneXml) ===== -->
+            <section id="sectionNotas" class="section" style="display: none;">
+                <div class="page-header">
+                    <div>
+                        <h1>Baixar notas</h1>
+                        <p class="muted">Os XML do OneXml caem sozinhos numa pasta deste computador, separados por empresa, mês, entrada e saída.</p>
+                    </div>
+                    <div class="page-actions">
+                        <button id="btnNotasAbrirPasta" class="btn btn-secondary" title="Abrir a pasta no Windows">Abrir pasta</button>
+                        <button id="btnNotasSincronizar" class="btn btn-secondary" title="Procurar notas novas agora">
+                            <svg class="icon" viewBox="0 0 24 24"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>
+                            Baixar agora
+                        </button>
+                    </div>
+                </div>
+
+                <div id="notasAviso" class="notas-aviso" style="display: none;"></div>
+
+                <div id="notasConteudo" style="display: none;">
+                    <div class="settings-group">
+                        <div class="card settings-card">
+                            <div class="setting-row">
+                                <div class="setting-info">
+                                    <div class="setting-title">Baixar as notas automaticamente</div>
+                                    <div class="setting-desc">A cada 20 minutos o app procura notas novas das empresas marcadas abaixo. Essa escolha é só sua: os outros usuários do escritório têm a deles.</div>
+                                </div>
+                                <label class="switch"><input type="checkbox" id="chkNotasAtivo"><span class="slider"></span></label>
+                            </div>
+                            <div class="setting-row">
+                                <div class="setting-info">
+                                    <div class="setting-title">Pasta</div>
+                                    <div class="setting-desc">Onde as notas são gravadas neste computador.</div>
+                                    <input type="text" id="notasPasta" class="path-input" readonly placeholder="Nenhuma pasta selecionada">
+                                </div>
+                                <button id="btnNotasPasta" class="btn btn-secondary">Escolher</button>
+                            </div>
+                            <div class="setting-row">
+                                <div class="setting-info">
+                                    <div class="setting-title">Organizar por</div>
+                                    <div class="setting-desc" id="notasModeloExemplo"></div>
+                                </div>
+                                <div class="segmented" id="notasModelo">
+                                    <button data-modelo="empresa">Empresa › Mês</button>
+                                    <button data-modelo="mes">Mês › Empresa</button>
+                                </div>
+                            </div>
+                            <div class="setting-row">
+                                <div class="setting-info">
+                                    <div class="setting-title">Incluir as empresas ativadas depois</div>
+                                    <div class="setting-desc">Toda empresa que entrar no OneXml passa a ser baixada, com todos os tipos.</div>
+                                </div>
+                                <label class="switch"><input type="checkbox" id="chkNotasNovas"><span class="slider"></span></label>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="settings-group">
+                        <h2>Empresas <span class="count" id="notasContagem"></span></h2>
+                        <div class="toolbar">
+                            <label class="search">
+                                <svg class="icon" viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+                                <input type="text" id="notasBusca" placeholder="Buscar empresa pelo nome ou documento" autocomplete="off">
+                            </label>
+                            <button id="btnNotasMarcarTodas" class="btn btn-secondary">Marcar todas</button>
+                            <button id="btnNotasDesmarcarTodas" class="btn btn-secondary">Desmarcar</button>
+                        </div>
+                        <div class="card notas-lista" id="notasLista"></div>
+                    </div>
+
+                    <div class="notas-rodape">
+                        <span class="muted" id="notasStatus"></span>
+                        <button id="btnNotasSalvar" class="btn btn-primary">Salvar</button>
+                    </div>
+                </div>
+            </section>
+
             <!-- ===== Configurações ===== -->
             <section id="sectionConfiguracoes" class="section" style="display: none;">
                 <div class="page-header">
@@ -395,5 +475,6 @@
 </div>
 
 <script src="renderer.js"></script>
+<script src="notas-tela.js"></script>
 </body>
 </html>

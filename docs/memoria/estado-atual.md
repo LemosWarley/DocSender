@@ -1,8 +1,22 @@
 # Estado atual
 
-**Última atualização:** 2026-10-30
+**Última atualização:** 2026-11-15
 
 ## Onde o projeto está
+
+**2026-11-15 — 1.2.3 gerada, NÃO publicada.** `dist/DocSender Setup 1.2.3.exe` (115,6 MB, sha256
+`3dd42d4b…11c0`), com `notas.js`, `notas-caminhos.js` e `notas-tela.js` conferidos no `app.asar`. É a
+1.2.2 + "Baixar notas". Publicação: Super Admin → DocSender → enviar o `.exe` (vai direto ao
+`supabase.co`, por causa do teto de 100 MB do Cloudflare) → instalar numa máquina → "definir como atual".
+
+"Baixar notas": seção nova que baixa
+os XML do OneXml (NF-e, NFC-e, CT-e, NFS-e) para uma pasta, separados por empresa, mês, lado e tipo.
+Código: `src/main/notas.js` (sincronização), `src/main/notas-caminhos.js` (pastas, testado),
+`src/notas-tela.js` (tela), `sessao.getUserId()`. Servidor já em produção (`onexml-sincronizar`, no
+`onechattotal`). Testes: 30 passam, incluindo `test/notas.test.js` (rodada completa contra servidor
+falso). A tela abriu em desenvolvimento sem erro de script; **não testada com login real**. Falta
+escolher o número da versão (a 1.3.0 estava reservada para a Fase 4), gerar o instalador e publicar.
+Plano: `onechattotal/docs/plans/onexml-baixar-no-computador.md`.
 
 **2026-10-30 — 1.2.1 gerada, não publicada.** `dist/DocSender Setup 1.2.1.exe` (121 MB), com o
 `app.asar` conferido (traz `x-envio-tentativa` e "Documento reprocessado com sucesso"). É a 1.2.0 +

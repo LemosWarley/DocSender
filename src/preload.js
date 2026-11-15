@@ -63,6 +63,15 @@ contextBridge.exposeInMainWorld('electronAPI', {
         ipcRenderer.on('session-status', (event, data) => callback(data));
     },
 
+    // --- Baixar notas (XML do OneXml numa pasta deste computador) ---
+    notasConfig: () => ipcRenderer.invoke('notas-config'),
+    notasSalvar: (dados) => ipcRenderer.invoke('notas-salvar', dados),
+    notasSincronizar: () => ipcRenderer.invoke('notas-sincronizar'),
+    notasAbrirPasta: () => ipcRenderer.invoke('notas-abrir-pasta'),
+    onNotasStatus: (callback) => {
+        ipcRenderer.on('notas-status', (event, data) => callback(data));
+    },
+
     // --- Certificados ---
     selectCertFolder: () => ipcRenderer.invoke('select-cert-folder'),
     unlockCertificates: (passwordsToTry) => ipcRenderer.invoke('unlock-certificates', passwordsToTry),
