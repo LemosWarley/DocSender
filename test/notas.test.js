@@ -25,6 +25,7 @@ const srv = {
     historico: [],    // itens devolvidos por `novidades` com documento
     pedidosLinks: [],
     chamadas: [],
+    entregues: new Map(), // tudo que novidades já devolveu (para montar o link)
 };
 
 function servidor() {
@@ -56,13 +57,14 @@ function servidor() {
             if (b.acao === 'inicio') return json({ cursores: { nfe: cur, nfse: cur, cte: cur } });
             if (b.acao === 'novidades') {
                 const itens = b.documento ? srv.historico : srv.global;
+                for (const n of itens) srv.entregues.set(n.id, n);
                 if (!b.documento) srv.global = [];
                 return json({ ativo: srv.ativo, itens, cursores: { nfe: cur, nfse: cur, cte: cur }, fim: true, nomes: { [DOC]: 'ACME/GO LTDA' } });
             }
             if (b.acao === 'links') {
                 srv.pedidosLinks.push(...b.itens.map(i => i.id));
                 const base = `http://127.0.0.1:${res.socket.localPort}`;
-                const todos = [...srv.historico, ...srv.global];
+                const todos = [...srv.entregues.values()];
                 return json({
                     links: b.itens.map(i => ({
                         tipo: i.tipo, id: i.id,
@@ -144,6 +146,26 @@ test('rodada completa: histórico, novidades, pastas, gzip e cancelada movida', 
         assert.ok(fs.existsSync(path.join(empresa, 'Saida', 'NF-e', 'Canceladas', `${B}.xml`)), 'e vai para Canceladas');
         assert.deepEqual(srv.pedidosLinks, [], 'nada que já está na pasta pede link de novo');
         assert.deepEqual(srv.chamadas, ['config', 'novidades'], 'histórico não se repete');
+
+        // Rodada 2b: as notas agora vêm com número. A, que já estava com o nome pela chave, só é
+        // renomeada; D cai num nome já usado por OUTRA nota e leva a chave junto.
+        srv.chamadas = []; srv.pedidosLinks = [];
+        const D = '52261011871237000164550020000000991000000099';
+        const arqNumeroA = path.join(empresa, 'Entrada', 'NF-e', 'NF-e 000001 serie 2 - SEIVA (11871237000164).xml');
+        srv.global = [
+            nota('a0000000-0000-4000-8000-000000000001', A, { numero: '1', serie: '2', emitente_doc: '11871237000164', emitente_nome: 'SEIVA' }),
+        ];
+        await notas.sincronizar();
+        assert.ok(fs.existsSync(arqNumeroA), 'arquivo antigo renomeado para o número');
+        assert.ok(!fs.existsSync(arqA), 'e o nome pela chave some');
+        assert.deepEqual(srv.pedidosLinks, [], 'renomear não baixa de novo');
+
+        srv.chamadas = []; srv.pedidosLinks = [];
+        srv.global = [nota('a0000000-0000-4000-8000-000000000099', D, { numero: '1', serie: '2', emitente_doc: '11871237000164', emitente_nome: 'SEIVA' })];
+        await notas.sincronizar();
+        assert.equal(fs.readFileSync(arqNumeroA, 'utf8').includes(A), true, 'o arquivo de A não é sobrescrito');
+        const arqD = arqNumeroA.replace(/\.xml$/, ` (${D}).xml`);
+        assert.equal(fs.readFileSync(arqD, 'utf8'), `<nfeProc><chNFe>${D}</chNFe></nfeProc>`, 'D leva a chave no nome');
 
         // Rodada 3: desligado no servidor — não lista nada.
         srv.chamadas = []; srv.ativo = false;

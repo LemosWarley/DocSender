@@ -10,6 +10,10 @@ const EXEMPLO_MODELO = {
     empresa: 'Pasta › EMPRESA - documento › 2026-10 › Entrada › NF-e',
     mes: 'Pasta › 2026-10 › EMPRESA - documento › Entrada › NF-e',
 };
+const EXEMPLO_FORMATO = {
+    numero: 'Ex.: NF-e 004585 serie 2 - FORNECEDOR LTDA (12345678000190).xml. O emitente entra no nome quando não é a própria empresa, porque o número se repete entre fornecedores.',
+    chave: 'Ex.: 52260811871237000164550020000045851058109551.xml — o identificador oficial da nota.',
+};
 
 const notas = {
     carregado: false,
@@ -19,6 +23,7 @@ const notas = {
     incluirNovas: false,
     pasta: '',
     modelo: 'empresa',
+    formatoNome: 'numero',
     empresas: [], // { documento, nome, tipos_permitidos, marcada, tipos, lados }
     busca: '',
     status: null,
@@ -66,6 +71,10 @@ function renderTopoNotas() {
         b.classList.toggle('active', b.dataset.modelo === notas.modelo);
     });
     $('notasModeloExemplo').textContent = EXEMPLO_MODELO[notas.modelo];
+    document.querySelectorAll('#notasFormato button').forEach(b => {
+        b.classList.toggle('active', b.dataset.formato === notas.formatoNome);
+    });
+    $('notasFormatoExemplo').textContent = EXEMPLO_FORMATO[notas.formatoNome];
     const marcadas = notas.empresas.filter(e => e.marcada).length;
     $('notasContagem').textContent = notas.empresas.length ? `${marcadas}/${notas.empresas.length}` : '';
 }
@@ -153,6 +162,7 @@ async function abrirTelaNotas(forcar = false) {
         notas.incluirNovas = !!d.incluir_novas;
         notas.pasta = d.pasta || '';
         notas.modelo = d.modelo || 'empresa';
+        notas.formatoNome = d.formatoNome || 'numero';
         notas.empresas = (d.empresas || []).map(e => ({ ...e, tipos: [...e.tipos], lados: [...e.lados] }));
         notas.status = d.status || null;
         notas.sujo = false;
@@ -184,6 +194,7 @@ async function salvarNotas() {
             incluir_novas: notas.incluirNovas,
             pasta: notas.pasta,
             modelo: notas.modelo,
+            formatoNome: notas.formatoNome,
             empresas: marcadas.map(e => ({ documento: e.documento, tipos: e.tipos, lados: e.lados })),
         });
         if (!r.ok) { showToast(r.erro || 'Não foi possível salvar.', 'error', 6000); return; }
@@ -204,6 +215,9 @@ $('btnNotasPasta').addEventListener('click', async () => {
 });
 document.querySelectorAll('#notasModelo button').forEach(b => b.addEventListener('click', () => {
     notas.modelo = b.dataset.modelo; marcarSujo(); renderTopoNotas();
+}));
+document.querySelectorAll('#notasFormato button').forEach(b => b.addEventListener('click', () => {
+    notas.formatoNome = b.dataset.formato; marcarSujo(); renderTopoNotas();
 }));
 $('notasBusca').addEventListener('input', (e) => { notas.busca = e.target.value; renderListaNotas(); });
 $('btnNotasMarcarTodas').addEventListener('click', () => {

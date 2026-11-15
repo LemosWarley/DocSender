@@ -4,9 +4,12 @@
 
 ## Onde o projeto está
 
-**2026-11-15 — 1.2.3 gerada, NÃO publicada.** `dist/DocSender Setup 1.2.3.exe` (115,6 MB, sha256
-`3dd42d4b…11c0`), com `notas.js`, `notas-caminhos.js` e `notas-tela.js` conferidos no `app.asar`. É a
-1.2.2 + "Baixar notas". Publicação: Super Admin → DocSender → enviar o `.exe` (vai direto ao
+**2026-11-15 — 1.2.4 gerada, NÃO publicada (a 1.2.3 nunca foi publicada: pule-a).**
+`dist/DocSender Setup 1.2.4.exe` (121 MB, sha256 `5604483f…22c2`), conferido no `app.asar`. É a 1.2.2 +
+"Baixar notas" + **nome do arquivo pelo número da nota** (padrão; "Chave de acesso" é a outra opção).
+O emitente entra no nome quando não é a própria empresa; nome repetido de OUTRA nota leva a chave
+junto (conferido pelo conteúdo do XML); arquivo antigo pela chave é renomeado, não baixado de novo.
+Publicação: Super Admin → DocSender → enviar o `.exe` (vai direto ao
 `supabase.co`, por causa do teto de 100 MB do Cloudflare) → instalar numa máquina → "definir como atual".
 
 "Baixar notas": seção nova que baixa

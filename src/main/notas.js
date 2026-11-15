@@ -28,7 +28,8 @@ const sessao = require('./sessao');
 const { classifyFailure, responseErrorText } = require('./erros');
 const { existe, moveFile, emParalelo, estaDentroDe } = require('./arquivos');
 const {
-    MODELOS, nomePastaEmpresa, acharPastaPorDocumento, estaCancelada, caminhosDaNota, pastaOndeFicaAEmpresa,
+    MODELOS, FORMATOS_NOME, nomePastaEmpresa, acharPastaPorDocumento, estaCancelada, caminhosDaNota, comChave,
+    pastaOndeFicaAEmpresa,
 } = require('./notas-caminhos');
 
 const FUNCAO = `${API_BASE_URL}/functions/v1/onexml-sincronizar`;
@@ -55,7 +56,8 @@ function chaveLocal(userId) {
 }
 
 function lerLocal(userId) {
-    return { pasta: '', modelo: 'empresa', cursores: null, iniciados: {}, historico: {}, ...store().get(chaveLocal(userId), {}) };
+    // Sem formatoNome gravado = padrão "numero" (desde a 1.2.4).
+    return { pasta: '', modelo: 'empresa', formatoNome: 'numero', cursores: null, iniciados: {}, historico: {}, ...store().get(chaveLocal(userId), {}) };
 }
 
 function gravarLocal(userId, local) {
@@ -132,21 +134,48 @@ function criarResolvedorDePastas(local) {
 
 // ---------------------------------------------------------------- processamento
 
+// O arquivo é desta nota? O nome pela chave já prova; no nome pelo número, o XML traz a chave
+// (NF-e, NFC-e e CT-e no Id e no chNFe/chCTe; NFS-e no Id "NFS…").
+async function ehDaNota(arquivo, chave) {
+    if (path.basename(arquivo).includes(chave)) return true;
+    try {
+        return (await fs.promises.readFile(arquivo, 'utf8')).includes(chave);
+    } catch (e) {
+        return false;
+    }
+}
+
 // Decide o que fazer com cada nota da página. Devolve as que precisam ser baixadas.
 async function separar(itens, nomes, local, pastaDaEmpresa) {
     const baixar = [];
     let movidas = 0;
     for (const item of itens) {
         const pastaEmpresa = await pastaDaEmpresa(item, nomes[item.documento]);
-        const c = caminhosDaNota(item, { base: local.pasta, modelo: local.modelo, pastaEmpresa });
+        const c = caminhosDaNota(item, { base: local.pasta, modelo: local.modelo, pastaEmpresa, formato: local.formatoNome });
         // Defesa extra: nada sai da pasta escolhida.
-        if (!estaDentroDe(local.pasta, c.normal) || !estaDentroDe(local.pasta, c.cancelada)) continue;
+        if (![c.normal, c.cancelada, c.normalChave, c.canceladaChave].every(p => estaDentroDe(local.pasta, p))) continue;
+        const chave = String(item.chave || '').replace(/\D/g, '');
         const cancelada = estaCancelada(item.situacao);
-        const destino = cancelada ? c.cancelada : c.normal;
-        if (await existe(destino)) continue;
-        if (cancelada && await existe(c.normal)) {
-            // Já baixada e cancelada depois: só muda de lugar.
-            await moveFile(c.normal, path.dirname(c.cancelada), path.basename(c.cancelada));
+        let destino = cancelada ? c.cancelada : c.normal;
+
+        // Nome já usado: se for desta nota, nada a fazer; se for de outra (mesmo número de emitentes
+        // que o nome não separa), esta leva a chave junto.
+        if (await existe(destino)) {
+            if (await ehDaNota(destino, chave)) continue;
+            destino = comChave(destino, chave);
+            if (await existe(destino)) continue;
+        }
+
+        // A nota pode já estar na pasta com outro nome ou em outro lugar: cancelada depois de
+        // baixada, ou com o nome antigo (pela chave). Só muda de lugar, sem baixar de novo.
+        const outros = [c.normal, c.cancelada, comChave(c.normal, chave), comChave(c.cancelada, chave), c.normalChave, c.canceladaChave]
+            .filter((p, i, todos) => p !== destino && todos.indexOf(p) === i);
+        let achado = null;
+        for (const origem of outros) {
+            if (await existe(origem) && await ehDaNota(origem, chave)) { achado = origem; break; }
+        }
+        if (achado) {
+            await moveFile(achado, path.dirname(destino), path.basename(destino));
             movidas++;
             continue;
         }
@@ -257,7 +286,7 @@ async function rodada() {
 
     const partes = [];
     partes.push(soma.baixadas === 1 ? '1 nota nova' : `${soma.baixadas} notas novas`);
-    if (soma.movidas) partes.push(`${soma.movidas} movida(s) para Canceladas`);
+    if (soma.movidas) partes.push(`${soma.movidas} movida(s) ou renomeada(s)`);
     if (soma.falhas) partes.push(`${soma.falhas} não baixada(s) — nova tentativa na próxima rodada`);
     else if (incompleto) partes.push('ainda há mais notas; continua na próxima rodada');
     atualizarStatus({
@@ -303,20 +332,25 @@ async function obterConfig() {
     const userId = sessao.getUserId();
     const local = lerLocal(userId);
     const cfg = await chamar({ acao: 'config' });
-    return { ...cfg, pasta: local.pasta, modelo: local.modelo, status };
+    return { ...cfg, pasta: local.pasta, modelo: local.modelo, formatoNome: local.formatoNome, status };
 }
 
-async function salvar({ ativo, incluir_novas, empresas, pasta, modelo }) {
+async function salvar({ ativo, incluir_novas, empresas, pasta, modelo, formatoNome }) {
     await sessao.ensureValidToken();
     const userId = sessao.getUserId();
     if (!userId) throw new Error('Sessão sem usuário');
     const local = lerLocal(userId);
     const novoModelo = MODELOS.includes(modelo) ? modelo : 'empresa';
+    const novoFormato = FORMATOS_NOME.includes(formatoNome) ? formatoNome : 'numero';
     if (ativo && !pasta) return { ok: false, erro: 'Escolha a pasta antes de ligar.' };
-    // Pasta ou modelo novo: as empresas recebem o histórico de novo, já no lugar novo.
-    if (pasta !== local.pasta || novoModelo !== local.modelo) { local.iniciados = {}; local.historico = {}; }
+    // Pasta, modelo ou nome novo: as empresas recebem o histórico de novo, já no lugar novo. O que
+    // já estava na pasta com o nome antigo é renomeado, não baixado de novo.
+    if (pasta !== local.pasta || novoModelo !== local.modelo || novoFormato !== local.formatoNome) {
+        local.iniciados = {}; local.historico = {};
+    }
     local.pasta = pasta || '';
     local.modelo = novoModelo;
+    local.formatoNome = novoFormato;
     await chamar({ acao: 'salvar', ativo: !!ativo, incluir_novas: !!incluir_novas, empresas: empresas || [] });
     gravarLocal(userId, local);
     if (ativo) setTimeout(sincronizar, 500);

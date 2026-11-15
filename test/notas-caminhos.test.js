@@ -60,3 +60,30 @@ test('cancelada, substituída e denegada vão para Canceladas', () => {
     assert.equal(estaCancelada('denegada'), true);
     assert.equal(estaCancelada('autorizada'), false);
 });
+
+const { nomeArquivoPorNumero, comChave } = require('../src/main/notas-caminhos');
+
+test('nome pelo número: emitente entra quando não é a própria empresa', () => {
+    const saida = { ...NOTA, lado: 'saida', numero: '123', serie: '1', emitente_doc: NOTA.documento, emitente_nome: 'ACME' };
+    assert.equal(nomeArquivoPorNumero(saida), 'NF-e 000123 serie 1.xml');
+    const entrada = { ...NOTA, numero: '4585', serie: '2', emitente_doc: '12345678000190', emitente_nome: 'FORNECEDOR/GO LTDA.' };
+    assert.equal(nomeArquivoPorNumero(entrada), 'NF-e 004585 serie 2 - FORNECEDOR GO LTDA (12345678000190).xml');
+    const nfse = { ...NOTA, tipo: 'nfse', numero: '1069', serie: null, emitente_doc: '10789478000104', emitente_nome: '' };
+    assert.equal(nomeArquivoPorNumero(nfse), 'NFS-e 001069 - 10789478000104.xml');
+});
+
+test('nome pelo número: sem número cai na chave, e nada estranho entra no nome', () => {
+    assert.equal(nomeArquivoPorNumero({ ...NOTA, numero: null }), `${NOTA.chave}.xml`);
+    assert.equal(nomeArquivoPorNumero({ ...NOTA, numero: '../12', serie: '1/2', emitente_doc: NOTA.documento }), 'NF-e 000012 serie 12.xml');
+});
+
+test('comChave acrescenta a chave antes da extensão', () => {
+    assert.equal(comChave(path.join(BASE, 'NF-e 000001.xml'), NOTA.chave), path.join(BASE, `NF-e 000001 (${NOTA.chave}).xml`));
+});
+
+test('caminhosDaNota no formato número guarda também o caminho pela chave', () => {
+    const c = caminhosDaNota({ ...NOTA, numero: '7', serie: '1', emitente_doc: NOTA.documento },
+        { base: BASE, modelo: 'empresa', pastaEmpresa: 'X', formato: 'numero' });
+    assert.equal(path.basename(c.normal), 'NF-e 000007 serie 1.xml');
+    assert.equal(path.basename(c.normalChave), `${NOTA.chave}.xml`);
+});
