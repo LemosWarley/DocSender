@@ -49,7 +49,7 @@ function servidor() {
                 return json({
                     ativo: srv.ativo, incluir_novas: false, modulos: { busca_xml: true, busca_nfse: true },
                     empresas: [
-                        { documento: DOC, nome: 'ACME/GO LTDA', tipos_permitidos: ['nfe'], marcada: true, tipos: ['nfe'], lados: ['entrada', 'saida'] },
+                        { documento: DOC, nome: 'ACME/GO LTDA', tipos_permitidos: ['nfe'], marcada: true, tipos: ['nfe'], lados: ['entrada', 'saida'], multi_inscricao: !!srv.multi },
                         { documento: OUTRO, nome: 'OUTRA', tipos_permitidos: ['nfe'], marcada: false, tipos: ['nfe'], lados: ['entrada', 'saida'] },
                     ],
                 });
@@ -127,7 +127,7 @@ test('rodada completa: histórico, novidades, pastas, gzip e cancelada movida', 
 
         await notas.sincronizar();
 
-        const empresa = path.join(pasta, `ACME GO LTDA - ${DOC}`, '2026-10');
+        const empresa = path.join(pasta, `ACME GO LTDA - ${DOC}`, '2026', '10 - Outubro');
         const arqA = path.join(empresa, 'Entrada', 'NF-e', `${A}.xml`);
         const arqB = path.join(empresa, 'Saida', 'NF-e', `${B}.xml`);
         assert.equal(fs.readFileSync(arqA, 'utf8'), `<nfeProc><chNFe>${A}</chNFe></nfeProc>`, 'XML gravado descompactado');
@@ -171,6 +171,46 @@ test('rodada completa: histórico, novidades, pastas, gzip e cancelada movida', 
         srv.chamadas = []; srv.ativo = false;
         await notas.sincronizar();
         assert.deepEqual(srv.chamadas, ['config']);
+    } finally {
+        s.close();
+        fs.rmSync(pasta, { recursive: true, force: true });
+    }
+});
+
+test('produtor: ganha a 2ª inscrição e a nota muda de fazenda — o arquivo só é movido', async () => {
+    const s = servidor();
+    await new Promise(r => s.listen(0, '127.0.0.1', r));
+    const porta = s.address().port;
+    const pasta = fs.mkdtempSync(path.join(os.tmpdir(), 'notas-'));
+    const dadosStore = { [`notas.${USER}`]: { pasta, modelo: 'empresa', formatoNome: 'chave' } };
+    Object.assign(srv, { ativo: true, multi: false, global: [], historico: [], pedidosLinks: [], chamadas: [], entregues: new Map() });
+    try {
+        const notas = carregarNotasComDubles(porta, dadosStore);
+        const P = '52261011871237000164550020000000771000000077';
+        const id = 'b0000000-0000-4000-8000-000000000077';
+        const empresa = path.join(pasta, `ACME GO LTDA - ${DOC}`);
+        const arquivo = (...meio) => path.join(empresa, ...meio, '2026', '10 - Outubro', 'Entrada', 'NF-e', `${P}.xml`);
+
+        // 1. Uma inscrição só: sem o nível de inscrição.
+        srv.historico = [nota(id, P)];
+        await notas.sincronizar();
+        assert.ok(fs.existsSync(arquivo()), 'sem pasta de inscrição');
+        assert.equal(srv.pedidosLinks.length, 1);
+
+        // 2. O cliente ganhou a 2ª inscrição: o histórico volta e a nota vai para a pasta da fazenda.
+        srv.multi = true; srv.pedidosLinks = [];
+        srv.historico = [nota(id, P, { inscricao: { classe: 'inscricao', ie: '112366406', nome: 'FAZ. SANTA RITA' } })];
+        await notas.sincronizar();
+        assert.ok(fs.existsSync(arquivo('IE 112366406 - FAZ. SANTA RITA')), 'foi para a pasta da inscrição');
+        assert.ok(!fs.existsSync(arquivo()), 'e saiu do lugar antigo');
+        assert.deepEqual(srv.pedidosLinks, [], 'sem baixar de novo');
+
+        // 3. A NFS-e/NF-e foi reclassificada para outra fazenda: muda de pasta outra vez.
+        srv.global = [nota(id, P, { inscricao: { classe: 'inscricao', ie: '115402462', nome: 'FAZ. TABOCA' } })];
+        await notas.sincronizar();
+        assert.ok(fs.existsSync(arquivo('IE 115402462 - FAZ. TABOCA')), 'foi para a outra fazenda');
+        assert.ok(!fs.existsSync(arquivo('IE 112366406 - FAZ. SANTA RITA')), 'e saiu da anterior');
+        assert.deepEqual(srv.pedidosLinks, [], 'ainda sem baixar de novo');
     } finally {
         s.close();
         fs.rmSync(pasta, { recursive: true, force: true });

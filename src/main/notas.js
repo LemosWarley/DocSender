@@ -29,7 +29,7 @@ const { classifyFailure, responseErrorText } = require('./erros');
 const { existe, moveFile, emParalelo, estaDentroDe } = require('./arquivos');
 const {
     MODELOS, FORMATOS_NOME, nomePastaEmpresa, acharPastaPorDocumento, estaCancelada, caminhosDaNota, comChave,
-    pastaOndeFicaAEmpresa,
+    pastaOndeFicaAEmpresa, raizDaEmpresa, nomePastaInscricao, acharPastaPorInscricao, ehPastaDeInscricao,
 } = require('./notas-caminhos');
 
 const FUNCAO = `${API_BASE_URL}/functions/v1/onexml-sincronizar`;
@@ -109,26 +109,42 @@ async function gravarAtomico(destino, conteudo) {
 
 // ---------------------------------------------------------------- pastas
 
-// Pasta de cada empresa, reconhecida pelo DOCUMENTO: se a razão social mudar, a pasta antiga
-// continua sendo usada. Cache por rodada.
-function criarResolvedorDePastas(local) {
-    const cache = new Map();
+// Subpastas de uma pasta, lidas uma vez por rodada (cache). Pasta que ainda não existe = vazia.
+function criarListador() {
     const listagens = new Map();
-    return async function pastaDaEmpresa(item, nome) {
-        const onde = pastaOndeFicaAEmpresa(item, { base: local.pasta, modelo: local.modelo });
-        const chave = `${onde}|${item.documento}`;
-        if (cache.has(chave)) return cache.get(chave);
+    return async function listar(onde) {
         if (!listagens.has(onde)) {
             let nomes = [];
             try { nomes = (await fs.promises.readdir(onde, { withFileTypes: true })).filter(d => d.isDirectory()).map(d => d.name); }
             catch (e) { /* a pasta ainda não existe */ }
             listagens.set(onde, nomes);
         }
-        const existente = acharPastaPorDocumento(listagens.get(onde), item.documento);
-        const escolhida = existente || nomePastaEmpresa(nome, item.documento);
-        if (!existente) listagens.get(onde).push(escolhida);
-        cache.set(chave, escolhida);
-        return escolhida;
+        return listagens.get(onde);
+    };
+}
+
+// Pastas de cada nota, por rodada:
+//   - empresa: reconhecida pelo DOCUMENTO — se a razão social mudar, a pasta antiga continua;
+//   - inscrição (só cliente com mais de uma): reconhecida pelo número da IE;
+//   - as OUTRAS pastas de inscrição da empresa, onde a nota pode estar se mudou de fazenda.
+function criarResolvedorDePastas(local) {
+    const listar = criarListador();
+    return async function pastasDaNota(item, nome) {
+        const onde = pastaOndeFicaAEmpresa(item, { base: local.pasta, modelo: local.modelo });
+        const empresas = await listar(onde);
+        let pastaEmpresa = acharPastaPorDocumento(empresas, item.documento);
+        if (!pastaEmpresa) { pastaEmpresa = nomePastaEmpresa(nome, item.documento); empresas.push(pastaEmpresa); }
+
+        const raiz = raizDaEmpresa(item, { base: local.pasta, modelo: local.modelo, pastaEmpresa });
+        const inscricoes = await listar(raiz);
+        let pastaInscricao = null;
+        if (item.inscricao) {
+            pastaInscricao = acharPastaPorInscricao(inscricoes, item.inscricao) || nomePastaInscricao(item.inscricao);
+            if (!inscricoes.includes(pastaInscricao)) inscricoes.push(pastaInscricao);
+        }
+        // `null` = sem o nível de inscrição (onde a nota estava antes de o cliente ganhar a 2ª IE).
+        const outras = [null, ...inscricoes.filter(ehPastaDeInscricao)].filter(p => p !== pastaInscricao);
+        return { pastaEmpresa, pastaInscricao, outras };
     };
 }
 
@@ -145,16 +161,24 @@ async function ehDaNota(arquivo, chave) {
     }
 }
 
+// Todos os lugares e nomes em que a nota pode já estar.
+function lugaresPossiveis(c, chave) {
+    return [c.normal, c.cancelada, comChave(c.normal, chave), comChave(c.cancelada, chave), c.normalChave, c.canceladaChave];
+}
+
 // Decide o que fazer com cada nota da página. Devolve as que precisam ser baixadas.
-async function separar(itens, nomes, local, pastaDaEmpresa) {
+async function separar(itens, nomes, local, pastasDaNota) {
     const baixar = [];
     let movidas = 0;
     for (const item of itens) {
-        const pastaEmpresa = await pastaDaEmpresa(item, nomes[item.documento]);
-        const c = caminhosDaNota(item, { base: local.pasta, modelo: local.modelo, pastaEmpresa, formato: local.formatoNome });
-        // Defesa extra: nada sai da pasta escolhida.
-        if (![c.normal, c.cancelada, c.normalChave, c.canceladaChave].every(p => estaDentroDe(local.pasta, p))) continue;
+        const { pastaEmpresa, pastaInscricao, outras } = await pastasDaNota(item, nomes[item.documento]);
+        const opcoes = { base: local.pasta, modelo: local.modelo, pastaEmpresa, formato: local.formatoNome };
+        const c = caminhosDaNota(item, { ...opcoes, pastaInscricao });
         const chave = String(item.chave || '').replace(/\D/g, '');
+        // A nota pode estar na pasta de outra inscrição (reclassificada) ou sem o nível de inscrição.
+        const alternativos = outras.flatMap(p => lugaresPossiveis(caminhosDaNota(item, { ...opcoes, pastaInscricao: p }), chave));
+        // Defesa extra: nada sai da pasta escolhida.
+        if (![...lugaresPossiveis(c, chave), ...alternativos].every(p => estaDentroDe(local.pasta, p))) continue;
         const cancelada = estaCancelada(item.situacao);
         let destino = cancelada ? c.cancelada : c.normal;
 
@@ -167,8 +191,8 @@ async function separar(itens, nomes, local, pastaDaEmpresa) {
         }
 
         // A nota pode já estar na pasta com outro nome ou em outro lugar: cancelada depois de
-        // baixada, ou com o nome antigo (pela chave). Só muda de lugar, sem baixar de novo.
-        const outros = [c.normal, c.cancelada, comChave(c.normal, chave), comChave(c.cancelada, chave), c.normalChave, c.canceladaChave]
+        // baixada, com o nome antigo (pela chave) ou em outra inscrição. Só muda de lugar.
+        const outros = [...lugaresPossiveis(c, chave), ...alternativos]
             .filter((p, i, todos) => p !== destino && todos.indexOf(p) === i);
         let achado = null;
         for (const origem of outros) {
@@ -208,12 +232,12 @@ async function baixarTodas(pendentes) {
 
 // Percorre as páginas de `novidades` a partir dos `cursores`. Grava o marcador só depois de a
 // página inteira estar na pasta: se a rodada cair no meio, a próxima recomeça dali.
-async function percorrer({ local, cursores, documento, aoAvancar, pastaDaEmpresa }) {
+async function percorrer({ local, cursores, documento, aoAvancar, pastasDaNota }) {
     let total = { baixadas: 0, falhas: 0, movidas: 0 };
     for (let pagina = 0; pagina < MAX_PAGINAS_POR_RODADA; pagina++) {
         const r = await chamar({ acao: 'novidades', cursores: cursores || {}, ...(documento ? { documento } : {}) });
         if (!r.ativo) return { ...total, desligado: true };
-        const { baixar, movidas } = await separar(r.itens || [], r.nomes || {}, local, pastaDaEmpresa);
+        const { baixar, movidas } = await separar(r.itens || [], r.nomes || {}, local, pastasDaNota);
         const { baixadas, falhas } = await baixarTodas(baixar);
         total = { baixadas: total.baixadas + baixadas, falhas: total.falhas + falhas, movidas: total.movidas + movidas };
         // Com falha de download o marcador NÃO avança: a página volta na próxima rodada, e o que
@@ -242,7 +266,7 @@ async function rodada() {
     if (!cfg.ativo) { atualizarStatus({ estado: 'desligado', mensagem: '' }); return; }
 
     atualizarStatus({ estado: 'sincronizando', mensagem: 'Procurando notas novas…' });
-    const pastaDaEmpresa = criarResolvedorDePastas(local);
+    const pastasDaNota = criarResolvedorDePastas(local);
     let soma = { baixadas: 0, falhas: 0, movidas: 0 };
     let incompleto = false;
 
@@ -254,7 +278,7 @@ async function rodada() {
 
     // 2. O que mudou desde a última rodada, em todas as empresas marcadas.
     const g = await percorrer({
-        local, cursores: local.cursores, pastaDaEmpresa,
+        local, cursores: local.cursores, pastasDaNota,
         aoAvancar: (c) => { local.cursores = c; gravarLocal(userId, local); },
     });
     if (g.desligado) { atualizarStatus({ estado: 'desligado', mensagem: '' }); return; }
@@ -270,12 +294,22 @@ async function rodada() {
     for (const doc of Object.keys(local.iniciados)) {
         if (!marcadas.includes(doc)) { delete local.iniciados[doc]; delete local.historico[doc]; }
     }
+    // Empresa que ganhou (ou perdeu) a 2ª inscrição: o histórico volta, e o que já está na pasta é
+    // movido para a pasta da inscrição (ou tirado dela), sem baixar de novo.
+    local.multi = local.multi || {};
+    for (const e of cfg.empresas || []) {
+        const agora = !!e.multi_inscricao;
+        if (e.documento in local.multi && local.multi[e.documento] !== agora) {
+            delete local.iniciados[e.documento]; delete local.historico[e.documento];
+        }
+        local.multi[e.documento] = agora;
+    }
     gravarLocal(userId, local);
     for (const doc of marcadas) {
         if (local.iniciados[doc]) continue;
         atualizarStatus({ estado: 'sincronizando', mensagem: 'Baixando o histórico das empresas marcadas…' });
         const h = await percorrer({
-            local, cursores: local.historico[doc] || {}, documento: doc, pastaDaEmpresa,
+            local, cursores: local.historico[doc] || {}, documento: doc, pastasDaNota,
             aoAvancar: (c) => { local.historico[doc] = c; gravarLocal(userId, local); },
         });
         if (h.desligado) { atualizarStatus({ estado: 'desligado', mensagem: '' }); return; }

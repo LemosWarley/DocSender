@@ -23,11 +23,11 @@ Regravar este índice depois de escrever na memória:
 
 Foto do agora: onde o projeto está, o que está em andamento, pendências. — 5 KB, 5 seções.
 
-- `5-45` — Onde o projeto está
-- `46-54` — Em andamento
-- `55-62` — Próximos passos
-- `63-68` — Pendências e bloqueios
-- `69-81` — Contexto que não está no código
+- `5-49` — Onde o projeto está
+- `50-58` — Em andamento
+- `59-66` — Próximos passos
+- `67-72` — Pendências e bloqueios
+- `73-85` — Contexto que não está no código
 
 ## docs/memoria/decisoes.md
 

@@ -4,9 +4,13 @@
 
 ## Onde o projeto está
 
-**2026-11-15 — 1.2.4 gerada, NÃO publicada (a 1.2.3 nunca foi publicada: pule-a).**
-`dist/DocSender Setup 1.2.4.exe` (121 MB, sha256 `5604483f…22c2`), conferido no `app.asar`. É a 1.2.2 +
-"Baixar notas" + **nome do arquivo pelo número da nota** (padrão; "Chave de acesso" é a outra opção).
+**2026-11-15 — 1.2.5 gerada, NÃO publicada (a 1.2.3 e a 1.2.4 nunca foram publicadas: pule-as).**
+`dist/DocSender Setup 1.2.5.exe` (121 MB, sha256 `0e393a75…4a44`), conferido no `app.asar`. É a 1.2.2 +
+"Baixar notas" + nome pelo número + **pastas `Ano › 10 - Outubro`** (mês pelo nome, com o número na
+frente para ordenar) + **pasta por inscrição estadual** para cliente com mais de uma (produtor):
+`IE 112366406 - FAZ. SANTA RITA`, `Sem inscrição`, `A classificar`. Nota reclassificada, ou cliente que
+ganha a 2ª inscrição, tem o arquivo MOVIDO, sem baixar de novo. 39 testes.
+Antes, na 1.2.4: **nome do arquivo pelo número da nota** (padrão; "Chave de acesso" é a outra opção).
 O emitente entra no nome quando não é a própria empresa; nome repetido de OUTRA nota leva a chave
 junto (conferido pelo conteúdo do XML); arquivo antigo pela chave é renomeado, não baixado de novo.
 Publicação: Super Admin → DocSender → enviar o `.exe` (vai direto ao

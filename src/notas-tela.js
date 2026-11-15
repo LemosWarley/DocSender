@@ -7,8 +7,8 @@
 const ROTULOS_TIPO = { nfe: 'NF-e', nfce: 'NFC-e', cte: 'CT-e', nfse: 'NFS-e' };
 const ROTULOS_LADO = { entrada: 'Entrada', saida: 'Saída' };
 const EXEMPLO_MODELO = {
-    empresa: 'Pasta › EMPRESA - documento › 2026-10 › Entrada › NF-e',
-    mes: 'Pasta › 2026-10 › EMPRESA - documento › Entrada › NF-e',
+    empresa: 'Pasta › EMPRESA - documento › 2026 › 10 - Outubro › Entrada › NF-e. Produtor com mais de uma inscrição ganha uma pasta por inscrição antes do ano.',
+    mes: 'Pasta › 2026 › 10 - Outubro › EMPRESA - documento › Entrada › NF-e. Produtor com mais de uma inscrição ganha uma pasta por inscrição depois da empresa.',
 };
 const EXEMPLO_FORMATO = {
     numero: 'Ex.: NF-e 004585 serie 2 - FORNECEDOR LTDA (12345678000190).xml. O emitente entra no nome quando não é a própria empresa, porque o número se repete entre fornecedores.',
@@ -125,7 +125,7 @@ function renderListaNotas() {
         const titulo = document.createElement('strong');
         titulo.textContent = e.nome;
         const doc = document.createElement('small');
-        doc.textContent = formatarDocumento(e.documento);
+        doc.textContent = formatarDocumento(e.documento) + (e.multi_inscricao ? ' · uma pasta por inscrição estadual' : '');
         nome.append(titulo, doc);
         marca.append(chk, nome);
 

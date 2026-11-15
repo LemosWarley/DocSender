@@ -1,8 +1,11 @@
 // Onde cada XML do OneXml fica no computador. Lógica pura, sem Electron, coberta por
 // test/notas-caminhos.test.js. Plano: onechattotal/docs/plans/onexml-baixar-no-computador.md.
 //
-// Modelo "empresa" (padrão):  <pasta>\<NOME - documento>\<AAAA-MM>\<Entrada|Saida>\<tipo>\<arquivo>
-// Modelo "mes":               <pasta>\<AAAA-MM>\<NOME - documento>\<Entrada|Saida>\<tipo>\<arquivo>
+// Modelo "empresa" (padrão):  <pasta>\<NOME - doc>\[<inscrição>]\<ano>\<10 - Outubro>\<Entrada|Saida>\<tipo>\<arquivo>
+// Modelo "mes":               <pasta>\<ano>\<10 - Outubro>\<NOME - doc>\[<inscrição>]\<Entrada|Saida>\<tipo>\<arquivo>
+// O mês leva o número na frente para o Windows ordenar de janeiro a dezembro (e não por ordem
+// alfabética). A pasta de inscrição só existe para cliente com mais de uma (produtor rural): o
+// servidor manda `item.inscricao` só nesse caso.
 // Arquivo: pelo número da nota (padrão desde a 1.2.4) ou pela chave de acesso.
 // Nota cancelada (ou NFS-e substituída) vai para a subpasta `Canceladas` dentro do tipo.
 
@@ -37,8 +40,47 @@ function acharPastaPorDocumento(nomesExistentes, documento) {
     return (nomesExistentes || []).find(n => n === documento || n.endsWith(fim)) || null;
 }
 
-function mesValido(mes) {
-    return /^\d{4}-\d{2}$/.test(String(mes || '')) ? mes : 'sem-data';
+const NOMES_MES = ['Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho', 'Julho', 'Agosto',
+    'Setembro', 'Outubro', 'Novembro', 'Dezembro'];
+
+// '2026-10' → ['2026', '10 - Outubro']. Sem data válida → ['Sem data'].
+function pastasDoMes(mes) {
+    const m = /^(\d{4})-(\d{2})$/.exec(String(mes || ''));
+    const n = m ? Number(m[2]) : 0;
+    if (!m || n < 1 || n > 12) return ['Sem data'];
+    return [m[1], `${m[2]} - ${NOMES_MES[n - 1]}`];
+}
+
+// Pasta da inscrição: "IE 112366406 - FAZ. SANTA RITA", "Sem inscrição" ou "A classificar".
+// Reconhecida pelo número da IE, para sobreviver à troca do nome da fazenda.
+const PASTA_SEM_INSCRICAO = 'Sem inscrição';
+const PASTA_A_CLASSIFICAR = 'A classificar';
+
+function ieDaInscricao(inscricao) {
+    return String(inscricao?.ie || '').replace(/\D/g, '');
+}
+
+function nomePastaInscricao(inscricao) {
+    if (!inscricao) return null;
+    if (inscricao.classe === 'inscricao') {
+        const ie = ieDaInscricao(inscricao);
+        if (!ie) return PASTA_A_CLASSIFICAR;
+        const nome = limparNome(inscricao.nome).slice(0, 50).replace(/[. ]+$/, '');
+        return nome ? `IE ${ie} - ${nome}` : `IE ${ie}`;
+    }
+    return inscricao.classe === 'sem_inscricao' ? PASTA_SEM_INSCRICAO : PASTA_A_CLASSIFICAR;
+}
+
+function acharPastaPorInscricao(nomesExistentes, inscricao) {
+    if (inscricao?.classe !== 'inscricao') return null;
+    const ie = ieDaInscricao(inscricao);
+    if (!ie) return null;
+    return (nomesExistentes || []).find(n => n === `IE ${ie}` || n.startsWith(`IE ${ie} - `)) || null;
+}
+
+// Pastas de inscrição numa pasta de empresa (para achar uma nota que mudou de inscrição).
+function ehPastaDeInscricao(nome) {
+    return /^IE \d+( - |$)/.test(nome) || nome === PASTA_SEM_INSCRICAO || nome === PASTA_A_CLASSIFICAR;
 }
 
 function estaCancelada(situacao) {
@@ -83,17 +125,24 @@ function comChave(caminho, chave) {
     return caminho.replace(/\.xml$/i, ` (${soDigitosChave(chave)}).xml`);
 }
 
-// Caminho relativo à pasta da empresa resolvida (ver `pastaDaEmpresa` em notas.js).
-// Devolve { normal, cancelada } — os dois lugares possíveis do arquivo — e, no formato por
-// número, também { normalChave, canceladaChave }: onde a nota estaria com o nome antigo.
-function caminhosDaNota(item, { base, modelo, pastaEmpresa, formato = 'chave' }) {
+// Pasta da empresa no disco: no modelo "mes" ela fica dentro do ano e do mês.
+function raizDaEmpresa(item, { base, modelo, pastaEmpresa }) {
+    return modelo === 'mes'
+        ? path.join(base, ...pastasDoMes(item.mes), pastaEmpresa)
+        : path.join(base, pastaEmpresa);
+}
+
+// Caminhos da nota a partir da pasta da empresa e da inscrição já resolvidas (ver notas.js).
+// Devolve { normal, cancelada } — os dois lugares possíveis do arquivo — e
+// { normalChave, canceladaChave }: onde a nota estaria com o nome pela chave.
+// `pastaInscricao` null = sem o nível de inscrição.
+function caminhosDaNota(item, { base, modelo, pastaEmpresa, pastaInscricao = null, formato = 'chave' }) {
     const tipo = ROTULO_TIPO[item.tipo];
     const lado = ROTULO_LADO[item.lado];
     if (!tipo || !lado) throw new Error(`Nota com tipo ou lado desconhecido: ${item.tipo}/${item.lado}`);
-    const mes = mesValido(item.mes);
-    const raiz = modelo === 'mes'
-        ? path.join(base, mes, pastaEmpresa)
-        : path.join(base, pastaEmpresa, mes);
+    const empresa = raizDaEmpresa(item, { base, modelo, pastaEmpresa });
+    const comInscricao = pastaInscricao ? path.join(empresa, pastaInscricao) : empresa;
+    const raiz = modelo === 'mes' ? comInscricao : path.join(comInscricao, ...pastasDoMes(item.mes));
     const pastaTipo = path.join(raiz, lado, tipo);
     const porChave = nomeArquivo(item.chave);
     const arquivo = formato === 'numero' ? nomeArquivoPorNumero(item) : porChave;
@@ -105,9 +154,9 @@ function caminhosDaNota(item, { base, modelo, pastaEmpresa, formato = 'chave' })
     };
 }
 
-// Onde a pasta da empresa é procurada: no modelo "mes" ela fica dentro de cada mês.
+// Onde a pasta da empresa é procurada: no modelo "mes" ela fica dentro do ano e do mês.
 function pastaOndeFicaAEmpresa(item, { base, modelo }) {
-    return modelo === 'mes' ? path.join(base, mesValido(item.mes)) : base;
+    return modelo === 'mes' ? path.join(base, ...pastasDoMes(item.mes)) : base;
 }
 
 module.exports = {
@@ -124,4 +173,9 @@ module.exports = {
     nomeArquivo,
     caminhosDaNota,
     pastaOndeFicaAEmpresa,
+    pastasDoMes,
+    raizDaEmpresa,
+    nomePastaInscricao,
+    acharPastaPorInscricao,
+    ehPastaDeInscricao,
 };
